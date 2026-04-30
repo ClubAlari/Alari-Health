@@ -51,6 +51,8 @@ const I = {
   ChevUp: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="18 15 12 9 6 15"/></svg>,
   ChevDown: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>,
   Grip: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>,
+  User: ({s=22}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+  Palette: ({s=18}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><path d="M12 22C6.5 22 2 17.5 2 12S6.5 2 12 2s10 4.5 10 10c0 2-1 3.5-3 3.5h-2c-1 0-2 1-2 2 0 1.5 1.5 2 1 3.5-.5 1-2 1-4 1z"/></svg>,
 };
 
 // ─────────────────── WELCOME ───────────────────
@@ -145,22 +147,26 @@ function LogSetModal({ exercise, goal, onLog, onClose }) {
 function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
   const [showLog, setShowLog] = useState(false);
   const [showGoal, setShowGoal] = useState(false);
+  const [customWeight, setCustomWeight] = useState("");
   const exData = userData.exercises[exercise.id] || { goal:null, history:[] };
   const goal = exData.goal;
   const history = exData.history || [];
   const lastEntry = history[0];
-  const inc = WEIGHT_INCREMENTS[exercise.category] || 2.5;
   const pendingIncrease = lastEntry?.hitGoal && goal && !exData.increaseDismissed && goal.weight === lastEntry.goalAtTime?.weight;
-  const nextWeight = goal ? goal.weight + inc : 0;
+
+  useEffect(() => { if (pendingIncrease && goal) setCustomWeight(String(goal.weight + (WEIGHT_INCREMENTS[exercise.category] || 2.5))); }, [pendingIncrease]);
 
   const handleLog = (weight, reps) => {
     const entry = { date: new Date().toISOString(), weight, reps, goalAtTime: goal?{...goal}:null, hitGoal: goal?(weight>=goal.weight&&reps>=goal.targetReps):false };
     onUpdateData(exercise.id, { goal, history: [entry, ...history], increaseDismissed: false });
     setShowLog(false);
   };
-  const acceptIncrease = () => onUpdateData(exercise.id, { ...exData, goal: { ...goal, weight: nextWeight }, increaseDismissed: false });
+  const acceptIncrease = () => {
+    const newW = Number(customWeight);
+    if (newW > 0) onUpdateData(exercise.id, { ...exData, goal: { ...goal, weight: newW }, increaseDismissed: false });
+  };
   const dismissIncrease = () => onUpdateData(exercise.id, { ...exData, increaseDismissed: true });
-  const setGoal = (w, r) => { onUpdateData(exercise.id, { ...exData, goal: { weight:w, targetReps:r } }); setShowGoal(false); };
+  const setGoalFn = (w, r) => { onUpdateData(exercise.id, { ...exData, goal: { weight:w, targetReps:r } }); setShowGoal(false); };
 
   return (
     <div className="ah-detail ah-fade-in">
@@ -171,7 +177,23 @@ function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
         {goal ? <div className="ah-goal-display"><div className="ah-goal-num"><span className="ah-big-num">{goal.targetReps}</span><span className="ah-big-label">reps</span></div><span className="ah-goal-x">×</span><div className="ah-goal-num"><span className="ah-big-num">{goal.weight}</span><span className="ah-big-label">kg</span></div></div>
         : <p className="ah-empty-text">No goal set yet</p>}
       </div>
-      {pendingIncrease && <div className="ah-increase-prompt"><div className="ah-increase-icon"><I.Trophy/></div><div className="ah-increase-content"><p className="ah-increase-title">You hit your goal!</p><p className="ah-increase-desc">Would you like to increase your weight to <strong>{nextWeight}kg</strong> for next week?</p><div className="ah-increase-actions"><button className="ah-btn-primary ah-btn-sm" onClick={acceptIncrease}>Yes, increase to {nextWeight}kg</button><button className="ah-btn-secondary ah-btn-sm" onClick={dismissIncrease}>Not yet</button></div></div></div>}
+      {pendingIncrease && (
+        <div className="ah-increase-prompt">
+          <div className="ah-increase-icon"><I.Trophy/></div>
+          <div className="ah-increase-content">
+            <p className="ah-increase-title">You hit your goal!</p>
+            <p className="ah-increase-desc">What weight would you like to move to for next week?</p>
+            <div className="ah-increase-weight-row">
+              <input className="ah-input ah-increase-input" type="number" value={customWeight} onChange={e=>setCustomWeight(e.target.value)} placeholder="kg"/>
+              <span className="ah-increase-kg">kg</span>
+            </div>
+            <div className="ah-increase-actions">
+              <button className="ah-btn-primary ah-btn-sm" onClick={acceptIncrease}>Update Goal</button>
+              <button className="ah-btn-secondary ah-btn-sm" onClick={dismissIncrease}>Not yet</button>
+            </div>
+          </div>
+        </div>
+      )}
       <button className="ah-btn-primary ah-btn-log" onClick={()=>setShowLog(true)}><I.Plus/> Log Set</button>
       <div className="ah-history-section">
         <h3 className="ah-section-title"><I.History/> History</h3>
@@ -185,13 +207,13 @@ function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
         ))}</div>}
       </div>
       {showLog && <LogSetModal exercise={exercise} goal={goal} onLog={handleLog} onClose={()=>setShowLog(false)}/>}
-      {showGoal && <SetGoalModal exercise={exercise} currentGoal={goal} onSave={setGoal} onClose={()=>setShowGoal(false)}/>}
+      {showGoal && <SetGoalModal exercise={exercise} currentGoal={goal} onSave={setGoalFn} onClose={()=>setShowGoal(false)}/>}
     </div>
   );
 }
 
 // ─────────────────── TAB: HOME ───────────────────
-function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise }) {
+function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenProfile }) {
   const [showAdd, setShowAdd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const exercises = userData.exerciseList || [];
@@ -214,7 +236,7 @@ function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise }) {
           <p className="ah-dash-greeting">Welcome back,</p>
           <h1 className="ah-dash-name-big">{userData.name}</h1>
         </div>
-        <button className="ah-icon-btn ah-logout-btn" onClick={onLogout} title="Log out"><I.Logout/></button>
+        <button className="ah-profile-btn" onClick={onOpenProfile} title="Profile"><I.User s={20}/></button>
       </div>
 
       {/* Today's Split */}
@@ -655,6 +677,114 @@ function GrowthTab({ userData, onUpdateData }) {
   );
 }
 
+// ─────────────────── THEMES ───────────────────
+const THEMES = {
+  dark_gold: { id:"dark_gold", name:"Black & Gold", bg:"#0A0A0A", bg2:"#111111", bg3:"#1A1A1A", card:"#141414", cardBorder:"#222", text:"#F5F5F0", text2:"#999", text3:"#555", accent:"#C8A84E", accentLight:"#E8D48B" },
+  light_gold: { id:"light_gold", name:"White & Gold", bg:"#F5F5F0", bg2:"#EAEAE5", bg3:"#E0E0DB", card:"#FFFFFF", cardBorder:"#D4D4CF", text:"#1A1A1A", text2:"#666", text3:"#999", accent:"#B8942E", accentLight:"#D4B45E" },
+  dark_neon: { id:"dark_neon", name:"Black & Neon", bg:"#0A0A0A", bg2:"#111111", bg3:"#1A1A1A", card:"#141414", cardBorder:"#222", text:"#F5F5F0", text2:"#999", text3:"#555", accent:"#D4FF00", accentLight:"#E8FF66" },
+};
+
+function applyTheme(themeId) {
+  const t = THEMES[themeId] || THEMES.dark_gold;
+  const root = document.documentElement;
+  root.style.setProperty("--gold", t.accent);
+  root.style.setProperty("--gold-light", t.accentLight);
+  root.style.setProperty("--gold-dim", t.accent + "26");
+  root.style.setProperty("--gold-glow", t.accent + "4D");
+  root.style.setProperty("--bg", t.bg);
+  root.style.setProperty("--bg2", t.bg2);
+  root.style.setProperty("--bg3", t.bg3);
+  root.style.setProperty("--card", t.card);
+  root.style.setProperty("--card-border", t.cardBorder);
+  root.style.setProperty("--text", t.text);
+  root.style.setProperty("--text2", t.text2);
+  root.style.setProperty("--text3", t.text3);
+  document.body.style.background = t.bg;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = t.bg;
+}
+
+// ─────────────────── PROFILE PAGE ───────────────────
+function ProfilePage({ userData, onUpdateData, onLogout, onBack }) {
+  const [editingName, setEditingName] = useState(false);
+  const [newName, setNewName] = useState(userData.name || "");
+  const currentTheme = userData.theme || "dark_gold";
+
+  const saveName = () => {
+    if (newName.trim()) {
+      const u = { ...userData, name: newName.trim() }; saveData(u); onUpdateData(u);
+    }
+    setEditingName(false);
+  };
+
+  const changeTheme = (themeId) => {
+    applyTheme(themeId);
+    const u = { ...userData, theme: themeId }; saveData(u); onUpdateData(u);
+  };
+
+  const totalSets = Object.values(userData.exercises||{}).reduce((s,e)=>s+(e.history?.length||0),0);
+  const memberSince = userData.joinDate ? formatDate(userData.joinDate) : "Today";
+
+  return (
+    <div className="ah-page ah-fade-in">
+      <button className="ah-back-btn" onClick={onBack}><I.Back/> Back</button>
+      <div className="ah-profile-header">
+        <div className="ah-profile-avatar"><I.User s={36}/></div>
+        {editingName ? (
+          <div className="ah-profile-edit-name">
+            <input className="ah-input" value={newName} onChange={e=>setNewName(e.target.value)} autoFocus/>
+            <button className="ah-btn-primary ah-btn-sm" onClick={saveName}>Save</button>
+          </div>
+        ) : (
+          <div className="ah-profile-name-row">
+            <h1 className="ah-profile-name">{userData.name}</h1>
+            <button className="ah-icon-btn" onClick={()=>{setNewName(userData.name);setEditingName(true)}}><I.Edit/></button>
+          </div>
+        )}
+        <p className="ah-profile-phone">{userData.phone}</p>
+        <p className="ah-profile-since">Member since {memberSince}</p>
+      </div>
+
+      <div className="ah-profile-stats">
+        <div className="ah-stat-card"><span className="ah-stat-val">{(userData.exerciseList||[]).length}</span><span className="ah-stat-label">Exercises</span></div>
+        <div className="ah-stat-card"><span className="ah-stat-val">{totalSets}</span><span className="ah-stat-label">Total Sets</span></div>
+      </div>
+
+      <h3 className="ah-section-title" style={{marginTop:24,marginBottom:12}}><I.Palette/> Theme</h3>
+      <div className="ah-theme-list">
+        {Object.values(THEMES).map(t => (
+          <button key={t.id} className={`ah-theme-option ${currentTheme===t.id?"ah-theme-active":""}`} onClick={()=>changeTheme(t.id)}>
+            <div className="ah-theme-preview">
+              <div className="ah-theme-swatch" style={{background:t.bg,border:`1px solid ${t.cardBorder}`}}>
+                <div className="ah-theme-accent" style={{background:t.accent}}/>
+              </div>
+            </div>
+            <span className="ah-theme-name">{t.name}</span>
+            {currentTheme===t.id && <I.Check/>}
+          </button>
+        ))}
+      </div>
+
+      <button className="ah-btn-logout" onClick={onLogout}><I.Logout/> Log Out</button>
+    </div>
+  );
+}
+
+// ─────────────────── ONBOARDING ───────────────────
+function OnboardingScreen({ onDismiss }) {
+  return (
+    <div className="ah-modal-overlay" onClick={onDismiss}>
+      <div className="ah-modal ah-onboard-modal" onClick={e=>e.stopPropagation()}>
+        <div className="ah-onboard-icon"><I.Calendar s={32}/></div>
+        <h2 className="ah-modal-title">Before you begin</h2>
+        <p className="ah-onboard-text">Head to the <strong>Split</strong> tab to set up your weekly workout schedule. Name each day (Push, Pull, Legs, etc.) and assign your exercises.</p>
+        <p className="ah-onboard-text">This will make your home screen show exactly what you need to do each day.</p>
+        <button className="ah-btn-primary" onClick={onDismiss}>Got it</button>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────── TAB BAR ───────────────────
 function TabBar({ active, onChange }) {
   const tabs = [
@@ -679,18 +809,28 @@ export default function AlariHealth() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [tab, setTab] = useState("home");
   const [selectedExercise, setSelectedExercise] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
-  useEffect(() => { const d=loadData(); if(d?.phone){setUserData(d);setIsLoggedIn(true);} }, []);
+  useEffect(() => { const d=loadData(); if(d?.phone){setUserData(d);setIsLoggedIn(true);applyTheme(d.theme||"dark_gold");} }, []);
 
   const handleLogin = (phone, name) => {
     const existing = loadData();
-    if (existing?.phone === phone) { setUserData(existing); }
-    else { const nd={phone,name,exerciseList:[],exercises:{},splits:{},splitLabels:{},splitMuscles:{},photos:[],manualPRs:{}}; saveData(nd); setUserData(nd); }
+    if (existing?.phone === phone) { setUserData(existing); applyTheme(existing.theme||"dark_gold"); }
+    else {
+      const nd={phone,name,exerciseList:[],exercises:{},splits:{},splitLabels:{},splitMuscles:{},photos:[],manualPRs:{},theme:"dark_gold",joinDate:new Date().toISOString(),onboarded:false};
+      saveData(nd); setUserData(nd); setShowOnboarding(true);
+    }
     setIsLoggedIn(true);
   };
 
   const handleUpdateExerciseData = (exId, data) => {
     const u = { ...userData, exercises: { ...userData.exercises, [exId]: data } }; saveData(u); setUserData(u);
+  };
+
+  const handleDismissOnboarding = () => {
+    setShowOnboarding(false);
+    const u = { ...userData, onboarded: true }; saveData(u); setUserData(u);
   };
 
   if (!isLoggedIn) return (<><style>{styles}</style><div className="ah-app"><WelcomeScreen onLogin={handleLogin}/></div></>);
@@ -699,14 +839,16 @@ export default function AlariHealth() {
     <><style>{styles}</style>
       <div className="ah-app">
         <div className="ah-content">
-          {selectedExercise ? <ExerciseDetail exercise={selectedExercise} userData={userData} onBack={()=>setSelectedExercise(null)} onUpdateData={handleUpdateExerciseData}/>
-          : tab==="home" ? <HomeTab userData={userData} onUpdateData={setUserData} onLogout={()=>{setIsLoggedIn(false);setSelectedExercise(null);}} onSelectExercise={setSelectedExercise}/>
+          {showProfile ? <ProfilePage userData={userData} onUpdateData={setUserData} onLogout={()=>{setIsLoggedIn(false);setSelectedExercise(null);setShowProfile(false);}} onBack={()=>setShowProfile(false)}/>
+          : selectedExercise ? <ExerciseDetail exercise={selectedExercise} userData={userData} onBack={()=>setSelectedExercise(null)} onUpdateData={handleUpdateExerciseData}/>
+          : tab==="home" ? <HomeTab userData={userData} onUpdateData={setUserData} onLogout={()=>{setIsLoggedIn(false);setSelectedExercise(null);}} onSelectExercise={setSelectedExercise} onOpenProfile={()=>setShowProfile(true)}/>
           : tab==="prs" ? <PRsTab userData={userData} onUpdateData={setUserData}/>
           : tab==="split" ? <SplitTab userData={userData} onUpdateData={setUserData}/>
           : tab==="progress" ? <ProgressTab userData={userData}/>
           : <GrowthTab userData={userData} onUpdateData={setUserData}/>}
         </div>
-        <TabBar active={selectedExercise?"home":tab} onChange={(t)=>{setTab(t);setSelectedExercise(null);}}/>
+        {!showProfile && <TabBar active={selectedExercise?"home":tab} onChange={(t)=>{setTab(t);setSelectedExercise(null);}}/>}
+        {showOnboarding && <OnboardingScreen onDismiss={handleDismissOnboarding}/>}
       </div>
     </>
   );
@@ -724,7 +866,7 @@ const styles = `
   min-height:100vh;max-width:480px;margin:0 auto;position:relative;display:flex;flex-direction:column;
 }
 .ah-content{flex:1;overflow-y:auto;padding-bottom:85px;}
-.ah-page{padding:20px 20px 20px;}
+.ah-page{padding:calc(env(safe-area-inset-top, 20px) + 12px) 20px 20px;}
 
 @keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeOut{from{opacity:1}to{opacity:0}}
@@ -813,7 +955,7 @@ const styles = `
 .ah-empty-state{text-align:center;padding:48px 24px;color:var(--text3);display:flex;flex-direction:column;align-items:center;gap:12px}
 .ah-empty-text{color:var(--text3);font-size:13px;text-align:center;padding:16px}
 
-.ah-detail{padding:20px 20px 20px}
+.ah-detail{padding:calc(env(safe-area-inset-top, 20px) + 12px) 20px 20px}
 .ah-back-btn{display:flex;align-items:center;gap:4px;background:none;border:none;color:var(--text2);font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer;padding:0;margin-bottom:16px}
 .ah-back-btn:hover{color:var(--gold)}
 .ah-detail-header{margin-bottom:20px}.ah-detail-title{font-family:'Playfair Display',serif;font-size:26px;font-weight:700;margin:0 0 4px;color:var(--text)}
@@ -935,7 +1077,7 @@ const styles = `
 
 .ah-tabbar{
   position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
-  display:flex;justify-content:space-around;align-items:center;padding:8px 0 20px;
+  display:flex;justify-content:space-around;align-items:center;padding:8px 0 calc(env(safe-area-inset-bottom, 20px) + 4px);
   background:rgba(17,17,17,0.72);
   backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);
   border-top:1px solid rgba(255,255,255,0.08);z-index:50;
@@ -946,4 +1088,40 @@ const styles = `
 .ah-tabbar-label{margin-top:1px}
 
 .ah-app ::-webkit-scrollbar{width:4px}.ah-app ::-webkit-scrollbar-track{background:transparent}.ah-app ::-webkit-scrollbar-thumb{background:var(--card-border);border-radius:4px}
+
+/* ─── PROFILE ─── */
+.ah-profile-btn{width:40px;height:40px;border-radius:50%;background:var(--card);border:1px solid var(--card-border);color:var(--text2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s}
+.ah-profile-btn:hover{border-color:var(--gold);color:var(--gold)}
+.ah-profile-header{text-align:center;padding:20px 0 24px}
+.ah-profile-avatar{width:72px;height:72px;border-radius:50%;background:var(--card);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:var(--gold)}
+.ah-profile-name-row{display:flex;align-items:center;justify-content:center;gap:8px}
+.ah-profile-name{font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:var(--gold);margin:0}
+.ah-profile-edit-name{display:flex;gap:8px;align-items:center;justify-content:center;max-width:280px;margin:0 auto}
+.ah-profile-edit-name .ah-input{flex:1}
+.ah-profile-phone{font-size:13px;color:var(--text2);margin:4px 0 0}
+.ah-profile-since{font-size:11px;color:var(--text3);margin:4px 0 0;text-transform:uppercase;letter-spacing:1px}
+.ah-profile-stats{display:flex;gap:10px;margin-top:8px}
+.ah-btn-logout{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;background:transparent;border:1px solid var(--danger);border-radius:10px;color:var(--danger);font-family:'Outfit',sans-serif;font-size:14px;font-weight:500;cursor:pointer;margin-top:32px;transition:all .2s}
+.ah-btn-logout:hover{background:rgba(232,69,69,0.1)}
+
+/* ─── THEME PICKER ─── */
+.ah-theme-list{display:flex;flex-direction:column;gap:8px}
+.ah-theme-option{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--card);border:1px solid var(--card-border);border-radius:12px;cursor:pointer;transition:all .2s;font-family:'Outfit',sans-serif;font-size:14px;color:var(--text);width:100%}
+.ah-theme-option:hover{border-color:var(--gold)}
+.ah-theme-active{border-color:var(--gold);background:var(--gold-dim)}
+.ah-theme-preview{flex-shrink:0}
+.ah-theme-swatch{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.ah-theme-accent{width:16px;height:16px;border-radius:4px}
+.ah-theme-name{flex:1;font-weight:500}
+
+/* ─── ONBOARDING ─── */
+.ah-onboard-modal{border-radius:20px;max-width:360px;text-align:center;align-self:center}
+.ah-onboard-icon{width:56px;height:56px;border-radius:14px;background:var(--gold-dim);color:var(--gold);display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.ah-onboard-text{font-size:14px;color:var(--text2);margin:0 0 12px;line-height:1.5}
+.ah-onboard-text strong{color:var(--gold);font-weight:600}
+
+/* ─── INCREASE WEIGHT INPUT ─── */
+.ah-increase-weight-row{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.ah-increase-input{width:100px!important;text-align:center;font-size:18px!important;font-weight:600!important;padding:10px 12px!important}
+.ah-increase-kg{font-size:14px;color:var(--text2);font-weight:500}
 `;
