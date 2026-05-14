@@ -123,14 +123,14 @@ function WelcomeScreen({ onLogin }) {
   if (step === 0) return (
     <div className={`ah-welcome ${fadeClass}`}>
       <div className="ah-welcome-logo"><div className="ah-logo-ring"/><div className="ah-logo-text"><span className="ah-logo-a">A</span><span className="ah-logo-h">H</span></div></div>
-      <h1 className="ah-welcome-title">Alari Health</h1><p className="ah-welcome-sub">Elevate your progress</p>
+      <h1 className="ah-welcome-title">Alari Peak</h1><p className="ah-welcome-sub">Elevate your progress</p>
     </div>
   );
   return (
     <div className={`ah-welcome ${fadeClass}`}>
       <div className="ah-login-card">
         <div className="ah-login-logo-small"><span className="ah-logo-a">A</span><span className="ah-logo-h">H</span></div>
-        <h1 className="ah-login-title">Welcome to<br/><span className="ah-gold">Alari Health</span></h1>
+        <h1 className="ah-login-title">Welcome to<br/><span className="ah-gold">Alari Peak</span></h1>
         <p className="ah-login-sub">Enter your details to continue</p>
         <div className="ah-input-group"><label className="ah-label">Your Name</label><input className="ah-input" type="text" placeholder="e.g. Ash" value={name} onChange={e=>setName(e.target.value)}/></div>
         <div className="ah-input-group"><label className="ah-label">Phone Number</label><input className="ah-input" type="tel" placeholder="04XX XXX XXX" value={phone} onChange={e=>setPhone(e.target.value)}/></div>
