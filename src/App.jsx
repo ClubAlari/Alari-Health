@@ -1,27 +1,78 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { loadUserData, saveUserData } from "./supabase";
 
 const STORAGE_KEY = "alari_health_data";
 
 const DEFAULT_EXERCISES = [
+  // Arms
   { id: "tricep-pulldown", name: "Tricep Pulldown", category: "Arms" },
   { id: "bicep-curl", name: "Bicep Curl", category: "Arms" },
+  { id: "hammer-curl", name: "Hammer Curl", category: "Arms" },
+  { id: "tricep-dip", name: "Tricep Dip", category: "Arms" },
+  { id: "cable-curl", name: "Cable Curl", category: "Arms" },
+  { id: "skull-crusher", name: "Skull Crusher", category: "Arms" },
+  { id: "preacher-curl", name: "Preacher Curl", category: "Arms" },
+  { id: "overhead-tricep-ext", name: "Overhead Tricep Extension", category: "Arms" },
+  { id: "concentration-curl", name: "Concentration Curl", category: "Arms" },
+  { id: "reverse-curl", name: "Reverse Curl", category: "Arms" },
+  // Back
   { id: "lat-pulldown", name: "Lat Pulldown", category: "Back" },
   { id: "seated-row", name: "Seated Row", category: "Back" },
+  { id: "pull-up", name: "Pull Up", category: "Back" },
+  { id: "single-arm-row", name: "Single Arm Dumbbell Row", category: "Back" },
+  { id: "cable-row", name: "Cable Row", category: "Back" },
+  { id: "rear-delt-fly", name: "Rear Delt Fly", category: "Back" },
+  { id: "hyperextension", name: "Hyperextension", category: "Back" },
+  { id: "romanian-deadlift", name: "Romanian Deadlift", category: "Back" },
+  { id: "t-bar-row", name: "T-Bar Row", category: "Back" },
+  { id: "chin-up", name: "Chin Up", category: "Back" },
+  // Chest
   { id: "bench-press", name: "Bench Press", category: "Chest" },
+  { id: "incline-bench-press", name: "Incline Bench Press", category: "Chest" },
+  { id: "decline-bench-press", name: "Decline Bench Press", category: "Chest" },
+  { id: "chest-fly", name: "Chest Fly", category: "Chest" },
+  { id: "cable-crossover", name: "Cable Crossover", category: "Chest" },
+  { id: "pec-deck", name: "Pec Deck", category: "Chest" },
+  { id: "push-up", name: "Push Up", category: "Chest" },
+  { id: "dumbbell-press", name: "Dumbbell Press", category: "Chest" },
+  { id: "incline-fly", name: "Incline Fly", category: "Chest" },
+  // Shoulders
   { id: "shoulder-press", name: "Shoulder Press", category: "Shoulders" },
+  { id: "lateral-raise", name: "Lateral Raise", category: "Shoulders" },
+  { id: "face-pull", name: "Face Pull", category: "Shoulders" },
+  { id: "upright-row", name: "Upright Row", category: "Shoulders" },
+  { id: "arnold-press", name: "Arnold Press", category: "Shoulders" },
+  { id: "front-raise", name: "Front Raise", category: "Shoulders" },
+  { id: "reverse-fly", name: "Reverse Fly", category: "Shoulders" },
+  { id: "cable-lateral-raise", name: "Cable Lateral Raise", category: "Shoulders" },
+  { id: "shrug", name: "Shrug", category: "Shoulders" },
+  // Legs
   { id: "leg-press", name: "Leg Press", category: "Legs" },
   { id: "squat", name: "Squat", category: "Legs" },
   { id: "deadlift", name: "Deadlift", category: "Legs" },
   { id: "leg-curl", name: "Leg Curl", category: "Legs" },
   { id: "leg-extension", name: "Leg Extension", category: "Legs" },
   { id: "calf-raise", name: "Calf Raise", category: "Legs" },
-  { id: "chest-fly", name: "Chest Fly", category: "Chest" },
-  { id: "lateral-raise", name: "Lateral Raise", category: "Shoulders" },
-  { id: "face-pull", name: "Face Pull", category: "Shoulders" },
-  { id: "cable-crossover", name: "Cable Crossover", category: "Chest" },
+  { id: "bulgarian-split-squat", name: "Bulgarian Split Squat", category: "Legs" },
+  { id: "hip-thrust", name: "Hip Thrust", category: "Legs" },
+  { id: "sumo-deadlift", name: "Sumo Deadlift", category: "Legs" },
+  { id: "walking-lunge", name: "Walking Lunge", category: "Legs" },
+  { id: "hack-squat", name: "Hack Squat", category: "Legs" },
+  { id: "glute-bridge", name: "Glute Bridge", category: "Legs" },
+  { id: "goblet-squat", name: "Goblet Squat", category: "Legs" },
+  // Core
+  { id: "plank", name: "Plank", category: "Core" },
+  { id: "crunch", name: "Crunch", category: "Core" },
+  { id: "russian-twist", name: "Russian Twist", category: "Core" },
+  { id: "leg-raise", name: "Leg Raise", category: "Core" },
+  { id: "cable-crunch", name: "Cable Crunch", category: "Core" },
+  { id: "ab-rollout", name: "Ab Rollout", category: "Core" },
+  { id: "hanging-knee-raise", name: "Hanging Knee Raise", category: "Core" },
+  { id: "dead-bug", name: "Dead Bug", category: "Core" },
+  { id: "pallof-press", name: "Pallof Press", category: "Core" },
 ];
 
-const WEIGHT_INCREMENTS = { Arms: 2.5, Shoulders: 2.5, Back: 5, Chest: 5, Legs: 5 };
+const WEIGHT_INCREMENTS = { Arms: 2.5, Shoulders: 2.5, Back: 5, Chest: 5, Legs: 5, Core: 2.5 };
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function loadData() {
@@ -31,6 +82,9 @@ function saveData(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
 function formatDate(iso) { return new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }); }
 function formatTime(iso) { return new Date(iso).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }); }
 function getTodayDay() { return DAYS[new Date().getDay()]; }
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function calc1RM(weight, reps) { if (!weight || !reps) return null; if (reps === 1) return weight; return Math.round(weight * (1 + reps / 30)); }
+function fmtSecs(s) { return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; }
 
 // ─────────────────── ICONS ───────────────────
 const I = {
@@ -108,37 +162,133 @@ function AddExerciseModal({ onAdd, onClose, existingIds }) {
         <button className={`ah-tab ${tab==="custom"?"ah-tab-active":""}`} onClick={()=>setTab("custom")}>Custom</button>
       </div>
       {tab==="preset" ? <div className="ah-preset-list">{cats.map(c=><div key={c}><p className="ah-cat-label">{c}</p>{avail.filter(e=>e.category===c).map(e=><button key={e.id} className={`ah-preset-item ${sel.includes(e.id)?"ah-preset-selected":""}`} onClick={()=>toggle(e.id)}>{e.name}{sel.includes(e.id)&&<I.Check/>}</button>)}</div>)}{avail.length===0&&<p className="ah-empty-text">All presets added</p>}</div>
-      : <div className="ah-custom-form"><div className="ah-input-group"><label className="ah-label">Exercise Name</label><input className="ah-input" placeholder="e.g. Hammer Curl" value={customName} onChange={e=>setCustomName(e.target.value)}/></div><div className="ah-input-group"><label className="ah-label">Category</label><select className="ah-input ah-select" value={customCategory} onChange={e=>setCustomCategory(e.target.value)}>{["Arms","Back","Chest","Shoulders","Legs"].map(c=><option key={c}>{c}</option>)}</select></div></div>}
+      : <div className="ah-custom-form"><div className="ah-input-group"><label className="ah-label">Exercise Name</label><input className="ah-input" placeholder="e.g. Hammer Curl" value={customName} onChange={e=>setCustomName(e.target.value)}/></div><div className="ah-input-group"><label className="ah-label">Category</label><select className="ah-input ah-select" value={customCategory} onChange={e=>setCustomCategory(e.target.value)}>{["Arms","Back","Chest","Shoulders","Legs","Core"].map(c=><option key={c}>{c}</option>)}</select></div></div>}
       <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={onClose}>Cancel</button><button className="ah-btn-primary ah-btn-sm" onClick={add}>Add</button></div>
     </div></div>
   );
 }
 
 function SetGoalModal({ exercise, currentGoal, onSave, onClose }) {
-  const [w, setW] = useState(currentGoal?.weight||"");
-  const [r, setR] = useState(currentGoal?.targetReps||9);
+  const [w, setW] = useState(currentGoal?.weight || "");
+  const [minR, setMinR] = useState(currentGoal?.minReps ?? currentGoal?.targetReps ?? 8);
+  const [maxR, setMaxR] = useState(currentGoal?.maxReps ?? (currentGoal?.targetReps ? currentGoal.targetReps + 2 : 10));
   return (
     <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
       <h2 className="ah-modal-title">Set Goal</h2><p className="ah-modal-exercise">{exercise.name}</p>
-      <div className="ah-input-group"><label className="ah-label">Weight (kg)</label><input className="ah-input" type="number" placeholder="e.g. 32" value={w} onChange={e=>setW(e.target.value)}/></div>
-      <div className="ah-input-group"><label className="ah-label">Target Reps</label><input className="ah-input" type="number" placeholder="e.g. 9" value={r} onChange={e=>setR(e.target.value)}/></div>
-      <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={onClose}>Cancel</button><button className="ah-btn-primary ah-btn-sm" onClick={()=>{if(w&&r)onSave(Number(w),Number(r))}}>Save Goal</button></div>
+      <p className="ah-modal-sub">Once you hit the top of your rep range, you'll be prompted to increase weight.</p>
+      <div className="ah-input-group"><label className="ah-label">Goal Weight (kg)</label><input className="ah-input" type="number" placeholder="e.g. 90" value={w} onChange={e=>setW(e.target.value)}/></div>
+      <div className="ah-rep-range-row">
+        <div className="ah-input-group ah-rep-range-field"><label className="ah-label">Min Reps</label><input className="ah-input" type="number" placeholder="8" value={minR} onChange={e=>setMinR(e.target.value)}/></div>
+        <span className="ah-rep-range-dash">–</span>
+        <div className="ah-input-group ah-rep-range-field"><label className="ah-label">Max Reps</label><input className="ah-input" type="number" placeholder="10" value={maxR} onChange={e=>setMaxR(e.target.value)}/></div>
+      </div>
+      <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={onClose}>Cancel</button><button className="ah-btn-primary ah-btn-sm" onClick={()=>{if(w&&minR&&maxR)onSave(Number(w),Number(minR),Number(maxR))}}>Save Goal</button></div>
     </div></div>
   );
 }
 
-function LogSetModal({ exercise, goal, onLog, onClose }) {
-  const [w, setW] = useState(goal?.weight||"");
-  const [r, setR] = useState("");
-  const hit = goal && Number(w)>=goal.weight && Number(r)>=goal.targetReps;
+function LogSetModal({ exercise, goal, lastEntry, onLog, onClose }) {
+  const [w, setW] = useState(lastEntry?.weight ?? goal?.weight ?? "");
+  const [r, setR] = useState(lastEntry?.reps ?? "");
+  const goalMin = goal?.minReps ?? goal?.targetReps;
+  const goalMax = goal?.maxReps ?? goal?.targetReps;
+  const rNum = Number(r), wNum = Number(w);
+  const inRange = goal && wNum >= goal.weight && rNum >= goalMin && rNum < goalMax;
+  const hitTop  = goal && wNum >= goal.weight && rNum >= goalMax;
   return (
     <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
       <h2 className="ah-modal-title">Log Set</h2><p className="ah-modal-exercise">{exercise.name}</p>
-      {goal && <div className="ah-goal-badge"><I.Trophy/> Goal: {goal.targetReps} reps × {goal.weight}kg</div>}
-      <div className="ah-input-group"><label className="ah-label">Weight (kg)</label><input className="ah-input" type="number" placeholder="e.g. 32" value={w} onChange={e=>setW(e.target.value)}/></div>
-      <div className="ah-input-group"><label className="ah-label">Reps Completed</label><input className="ah-input" type="number" placeholder="e.g. 9" value={r} onChange={e=>setR(e.target.value)}/></div>
-      {w&&r&&hit&&<div className="ah-hit-banner"><I.Fire/> Goal hit! Nice work</div>}
+      {lastEntry && (
+        <div className="ah-last-entry">
+          <I.History/> Last: <strong>{lastEntry.weight}kg × {lastEntry.reps} reps</strong>
+          <span className="ah-last-date"> · {formatDate(lastEntry.date)}</span>
+        </div>
+      )}
+      {goal && <div className="ah-goal-badge"><I.Trophy/> Goal: {goalMin}–{goalMax} reps × {goal.weight}kg</div>}
+      <div className="ah-input-group"><label className="ah-label">Weight (kg)</label><input className="ah-input" type="number" placeholder="e.g. 90" value={w} onChange={e=>setW(e.target.value)}/></div>
+      <div className="ah-input-group"><label className="ah-label">Reps Completed</label><input className="ah-input" type="number" placeholder="e.g. 8" value={r} onChange={e=>setR(e.target.value)}/></div>
+      {w&&r&&inRange&&<div className="ah-range-banner">In your target range — great set!</div>}
+      {w&&r&&hitTop&&<div className="ah-hit-banner"><I.Fire/> Top of range hit — ready to move up!</div>}
       <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={onClose}>Cancel</button><button className="ah-btn-primary ah-btn-sm" onClick={()=>{if(w&&r)onLog(Number(w),Number(r))}}>Log Set</button></div>
+    </div></div>
+  );
+}
+
+// ─────────────────── REST TIMER ───────────────────
+function RestTimer({ onClose }) {
+  const [duration, setDuration] = useState(null);
+  const [remaining, setRemaining] = useState(0);
+  const presets = [60, 90, 120, 180, 240, 300];
+
+  useEffect(() => {
+    if (duration === null || remaining <= 0) return;
+    const t = setTimeout(() => setRemaining(r => { if (r <= 1) { onClose(); return 0; } return r - 1; }), 1000);
+    return () => clearTimeout(t);
+  }, [remaining, duration]);
+
+  const start = (s) => { setDuration(s); setRemaining(s); };
+  const pct = duration ? (remaining / duration) * 100 : 0;
+  const circ = 2 * Math.PI * 44;
+
+  if (duration === null) return (
+    <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
+      <h2 className="ah-modal-title">Rest Timer</h2>
+      <p className="ah-modal-sub">How long do you need?</p>
+      <div className="ah-timer-presets">{presets.map(s=><button key={s} className="ah-timer-preset" onClick={()=>start(s)}>{fmtSecs(s)}</button>)}</div>
+      <button className="ah-btn-secondary" style={{marginTop:12}} onClick={onClose}>Skip</button>
+    </div></div>
+  );
+  return (
+    <div className="ah-modal-overlay"><div className="ah-modal ah-timer-modal" onClick={e=>e.stopPropagation()}>
+      <p className="ah-timer-label">Rest</p>
+      <div className="ah-timer-circle-wrap">
+        <svg viewBox="0 0 100 100" className="ah-timer-svg">
+          <circle cx="50" cy="50" r="44" fill="none" stroke="var(--card-border)" strokeWidth="5"/>
+          <circle cx="50" cy="50" r="44" fill="none" stroke="var(--gold)" strokeWidth="5"
+            strokeDasharray={circ} strokeDashoffset={circ*(1-pct/100)}
+            strokeLinecap="round" style={{transform:"rotate(-90deg)",transformOrigin:"50% 50%",transition:"stroke-dashoffset 1s linear"}}/>
+        </svg>
+        <span className="ah-timer-count">{fmtSecs(remaining)}</span>
+      </div>
+      <button className="ah-btn-secondary" onClick={onClose}>Skip</button>
+    </div></div>
+  );
+}
+
+// ─────────────────── EDIT SET MODAL ───────────────────
+function EditSetModal({ entry, onSave, onClose }) {
+  const [w, setW] = useState(String(entry.weight));
+  const [r, setR] = useState(String(entry.reps));
+  const [date, setDate] = useState(entry.date.slice(0,10));
+  return (
+    <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
+      <h2 className="ah-modal-title">Edit Set</h2>
+      <div className="ah-input-group"><label className="ah-label">Weight (kg)</label><input className="ah-input" type="number" value={w} onChange={e=>setW(e.target.value)}/></div>
+      <div className="ah-input-group"><label className="ah-label">Reps</label><input className="ah-input" type="number" value={r} onChange={e=>setR(e.target.value)}/></div>
+      <div className="ah-input-group"><label className="ah-label">Date</label><input className="ah-input ah-date-input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+      <div className="ah-modal-actions">
+        <button className="ah-btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="ah-btn-primary ah-btn-sm" onClick={()=>{if(w&&r&&date)onSave({...entry,weight:Number(w),reps:Number(r),date:new Date(date).toISOString()})}}>Save</button>
+      </div>
+    </div></div>
+  );
+}
+
+// ─────────────────── EDIT PR MODAL ───────────────────
+function EditPRModal({ entry, onSave, onClose }) {
+  const [w, setW] = useState(String(entry.weight));
+  const [r, setR] = useState(String(entry.reps));
+  const [date, setDate] = useState(entry.date.slice(0,10));
+  return (
+    <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
+      <h2 className="ah-modal-title">Edit PR</h2>
+      <div className="ah-input-group"><label className="ah-label">Weight (kg)</label><input className="ah-input" type="number" value={w} onChange={e=>setW(e.target.value)}/></div>
+      <div className="ah-input-group"><label className="ah-label">Reps</label><input className="ah-input" type="number" value={r} onChange={e=>setR(e.target.value)}/></div>
+      <div className="ah-input-group"><label className="ah-label">Date</label><input className="ah-input ah-date-input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+      <div className="ah-modal-actions">
+        <button className="ah-btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="ah-btn-primary ah-btn-sm" onClick={()=>{if(w&&r&&date)onSave({...entry,weight:Number(w),reps:Number(r),date:new Date(date).toISOString()})}}>Save</button>
+      </div>
     </div></div>
   );
 }
@@ -147,67 +297,200 @@ function LogSetModal({ exercise, goal, onLog, onClose }) {
 function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
   const [showLog, setShowLog] = useState(false);
   const [showGoal, setShowGoal] = useState(false);
+  const [showOverride, setShowOverride] = useState(false);
+  const [showRestTimer, setShowRestTimer] = useState(false);
+  const [editingEntry, setEditingEntry] = useState(null); // entry object being edited
+  const [overrideWeight, setOverrideWeight] = useState("");
   const [customWeight, setCustomWeight] = useState("");
-  const exData = userData.exercises[exercise.id] || { goal:null, history:[] };
+
+  const exData = userData.exercises[exercise.id] || { goal: null, history: [] };
   const goal = exData.goal;
   const history = exData.history || [];
   const lastEntry = history[0];
+
+  const goalMin = goal?.minReps ?? goal?.targetReps;
+  const goalMax = goal?.maxReps ?? goal?.targetReps;
   const pendingIncrease = lastEntry?.hitGoal && goal && !exData.increaseDismissed && goal.weight === lastEntry.goalAtTime?.weight;
 
-  useEffect(() => { if (pendingIncrease && goal) setCustomWeight(String(goal.weight + (WEIGHT_INCREMENTS[exercise.category] || 2.5))); }, [pendingIncrease]);
+  // Best set ever — for 1RM
+  const bestSet = history.length ? history.reduce((a,b) => calc1RM(b.weight,b.reps) > calc1RM(a.weight,a.reps) ? b : a, history[0]) : null;
+  const estimated1RM = bestSet ? calc1RM(bestSet.weight, bestSet.reps) : null;
+
+  // Today's entry (one-set-per-day)
+  const todayEntry = history.find(e => e.date.slice(0,10) === todayStr());
+
+  useEffect(() => {
+    if (pendingIncrease && goal) setCustomWeight(String(goal.weight + (WEIGHT_INCREMENTS[exercise.category] || 2.5)));
+  }, [pendingIncrease]);
 
   const handleLog = (weight, reps) => {
-    const entry = { date: new Date().toISOString(), weight, reps, goalAtTime: goal?{...goal}:null, hitGoal: goal?(weight>=goal.weight&&reps>=goal.targetReps):false };
-    onUpdateData(exercise.id, { goal, history: [entry, ...history], increaseDismissed: false });
+    const hitGoal = goal ? weight >= goal.weight && reps >= goalMax : false;
+    const entry = { date: new Date().toISOString(), weight, reps, goalAtTime: goal ? { ...goal } : null, hitGoal };
+    // Replace today's entry if it exists, otherwise prepend
+    const newHistory = todayEntry
+      ? history.map(e => e.date.slice(0,10) === todayStr() ? entry : e)
+      : [entry, ...history];
+    onUpdateData(exercise.id, { goal, history: newHistory, increaseDismissed: false });
     setShowLog(false);
+    setShowRestTimer(true);
   };
+
+  const handleDeleteEntry = (entryToDelete) => {
+    const newHistory = history.filter(e => !(e.date === entryToDelete.date && e.weight === entryToDelete.weight && e.reps === entryToDelete.reps));
+    onUpdateData(exercise.id, { ...exData, history: newHistory });
+  };
+
+  const handleEditEntry = (original, updated) => {
+    const hitGoal = goal ? updated.weight >= goal.weight && updated.reps >= goalMax : false;
+    const newHistory = history.map(e => e === original ? { ...updated, hitGoal } : e);
+    onUpdateData(exercise.id, { ...exData, history: newHistory });
+    setEditingEntry(null);
+  };
+
   const acceptIncrease = () => {
     const newW = Number(customWeight);
     if (newW > 0) onUpdateData(exercise.id, { ...exData, goal: { ...goal, weight: newW }, increaseDismissed: false });
   };
   const dismissIncrease = () => onUpdateData(exercise.id, { ...exData, increaseDismissed: true });
-  const setGoalFn = (w, r) => { onUpdateData(exercise.id, { ...exData, goal: { weight:w, targetReps:r } }); setShowGoal(false); };
+  const setGoalFn = (w, minR, maxR) => { onUpdateData(exercise.id, { ...exData, goal: { weight: w, minReps: minR, maxReps: maxR } }); setShowGoal(false); };
+  const applyOverride = () => {
+    const newW = Number(overrideWeight);
+    if (newW > 0) { onUpdateData(exercise.id, { ...exData, goal: { ...goal, weight: newW }, increaseDismissed: true }); setShowOverride(false); }
+  };
+
+  // Group history by weight
+  const weightMap = {};
+  [...history].reverse().forEach(e => { if (!weightMap[e.weight]) weightMap[e.weight] = []; weightMap[e.weight].push(e); });
+  const sortedWeights = Object.keys(weightMap).map(Number).sort((a,b) => b-a);
+  const currentWeightSets = goal ? (weightMap[goal.weight] || []) : [];
 
   return (
     <div className="ah-detail ah-fade-in">
       <button className="ah-back-btn" onClick={onBack}><I.Back/> Back</button>
       <div className="ah-detail-header"><h2 className="ah-detail-title">{exercise.name}</h2><span className="ah-detail-cat">{exercise.category}</span></div>
+
+      {/* Goal card */}
       <div className="ah-card ah-goal-card">
         <div className="ah-card-header"><span className="ah-card-label">Current Goal</span><button className="ah-icon-btn" onClick={()=>setShowGoal(true)}><I.Edit/></button></div>
-        {goal ? <div className="ah-goal-display"><div className="ah-goal-num"><span className="ah-big-num">{goal.targetReps}</span><span className="ah-big-label">reps</span></div><span className="ah-goal-x">×</span><div className="ah-goal-num"><span className="ah-big-num">{goal.weight}</span><span className="ah-big-label">kg</span></div></div>
-        : <p className="ah-empty-text">No goal set yet</p>}
+        {goal ? (
+          <>
+            <div className="ah-goal-display">
+              <div className="ah-goal-num"><span className="ah-big-num">{goalMin}–{goalMax}</span><span className="ah-big-label">reps</span></div>
+              <span className="ah-goal-x">×</span>
+              <div className="ah-goal-num"><span className="ah-big-num">{goal.weight}</span><span className="ah-big-label">kg</span></div>
+            </div>
+            {estimated1RM && <div className="ah-1rm-chip">Est. 1RM <strong>{estimated1RM}kg</strong></div>}
+          </>
+        ) : <p className="ah-empty-text">No goal set — tap edit to add one</p>}
+
+        {/* Rep progression dots for current weight */}
+        {goal && currentWeightSets.length > 0 && (
+          <div className="ah-weight-progress">
+            <span className="ah-weight-progress-label">Reps at {goal.weight}kg</span>
+            <div className="ah-rep-dots">
+              {currentWeightSets.map((s,i) => (
+                <span key={i} title={`${s.reps} reps · ${formatDate(s.date)}`}
+                  className={`ah-rep-dot ${s.reps>=goalMax?"ah-rep-dot-gold":s.reps>=goalMin?"ah-rep-dot-good":"ah-rep-dot-low"}`}>
+                  {s.reps}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Pending increase */}
       {pendingIncrease && (
         <div className="ah-increase-prompt">
           <div className="ah-increase-icon"><I.Trophy/></div>
           <div className="ah-increase-content">
-            <p className="ah-increase-title">You hit your goal!</p>
-            <p className="ah-increase-desc">What weight would you like to move to for next week?</p>
+            <p className="ah-increase-title">Top of range hit — ready to move up!</p>
+            <p className="ah-increase-desc">What weight for next time?</p>
             <div className="ah-increase-weight-row">
               <input className="ah-input ah-increase-input" type="number" value={customWeight} onChange={e=>setCustomWeight(e.target.value)} placeholder="kg"/>
               <span className="ah-increase-kg">kg</span>
             </div>
             <div className="ah-increase-actions">
-              <button className="ah-btn-primary ah-btn-sm" onClick={acceptIncrease}>Update Goal</button>
+              <button className="ah-btn-primary ah-btn-sm" onClick={acceptIncrease}>Move Up</button>
               <button className="ah-btn-secondary ah-btn-sm" onClick={dismissIncrease}>Not yet</button>
             </div>
           </div>
         </div>
       )}
-      <button className="ah-btn-primary ah-btn-log" onClick={()=>setShowLog(true)}><I.Plus/> Log Set</button>
-      <div className="ah-history-section">
-        <h3 className="ah-section-title"><I.History/> History</h3>
-        {history.length===0 ? <p className="ah-empty-text">No sets logged yet</p> :
-        <div className="ah-history-list">{history.map((e,i)=>(
-          <div key={i} className={`ah-history-item ${e.hitGoal?"ah-history-hit":""}`}>
-            <div className="ah-history-top"><span className="ah-history-date">{formatDate(e.date)}</span><span className="ah-history-time">{formatTime(e.date)}</span>{e.hitGoal&&<span className="ah-hit-tag"><I.Fire/> Goal Hit</span>}</div>
-            <div className="ah-history-stats"><span className="ah-stat">{e.reps} <small>reps</small></span><span className="ah-stat-sep">×</span><span className="ah-stat">{e.weight} <small>kg</small></span></div>
-            {e.goalAtTime&&<div className="ah-history-goal-ref">Target was {e.goalAtTime.targetReps} reps × {e.goalAtTime.weight}kg</div>}
-          </div>
-        ))}</div>}
+
+      {/* Log Set + Override */}
+      <div className="ah-log-row">
+        <button className="ah-btn-primary ah-btn-log" style={{flex:1}} onClick={()=>setShowLog(true)}>
+          <I.Plus/> {todayEntry ? "Replace Today's Set" : "Log Set"}
+        </button>
+        {goal && !pendingIncrease && (
+          <button className="ah-btn-override" onClick={()=>{ setOverrideWeight(String(goal.weight+(WEIGHT_INCREMENTS[exercise.category]||2.5))); setShowOverride(true); }}>
+            ↑ Override
+          </button>
+        )}
       </div>
-      {showLog && <LogSetModal exercise={exercise} goal={goal} onLog={handleLog} onClose={()=>setShowLog(false)}/>}
+      {todayEntry && <p className="ah-today-logged">Today: {todayEntry.weight}kg × {todayEntry.reps} reps — logging again replaces it</p>}
+
+      {/* Override modal */}
+      {showOverride && (
+        <div className="ah-modal-overlay" onClick={()=>setShowOverride(false)}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
+          <h2 className="ah-modal-title">Override Weight</h2>
+          <p className="ah-modal-sub">Move up before hitting the top of your rep range.</p>
+          <div className="ah-input-group"><label className="ah-label">New Goal Weight (kg)</label>
+            <input className="ah-input" type="number" value={overrideWeight} onChange={e=>setOverrideWeight(e.target.value)}/></div>
+          <div className="ah-modal-actions">
+            <button className="ah-btn-secondary" onClick={()=>setShowOverride(false)}>Cancel</button>
+            <button className="ah-btn-primary ah-btn-sm" onClick={applyOverride}>Apply</button>
+          </div>
+        </div></div>
+      )}
+
+      {/* Weight history */}
+      <div className="ah-history-section">
+        <h3 className="ah-section-title"><I.History/> Weight History</h3>
+        {sortedWeights.length === 0 ? <p className="ah-empty-text">No sets logged yet</p> :
+          sortedWeights.map(w => {
+            const sets = weightMap[w];
+            const best = Math.max(...sets.map(s=>s.reps));
+            const didHit = sets.some(s=>s.hitGoal);
+            const isCurrent = goal && w === goal.weight;
+            const goalAtW = sets.find(s=>s.goalAtTime)?.goalAtTime;
+            const rangeLabel = goalAtW ? `${goalAtW.minReps??goalAtW.targetReps}–${goalAtW.maxReps??goalAtW.targetReps}` : null;
+            const orm = calc1RM(w, best);
+            return (
+              <div key={w} className={`ah-weight-group ${isCurrent?"ah-weight-current":""}`}>
+                <div className="ah-weight-group-header">
+                  <span className="ah-weight-group-kg">{w}<small>kg</small></span>
+                  <div className="ah-weight-group-meta">
+                    {orm && <span className="ah-weight-1rm">1RM ~{orm}kg</span>}
+                    {rangeLabel && <span className="ah-weight-range-label">{rangeLabel} reps</span>}
+                    {didHit && <span className="ah-hit-badge"><I.Fire s={12}/> Hit</span>}
+                    {isCurrent && <span className="ah-current-badge">Current</span>}
+                  </div>
+                </div>
+                <div className="ah-weight-set-list">
+                  {sets.slice().reverse().map((s,i) => (
+                    <div key={i} className={`ah-weight-set-row ${s.hitGoal?"ah-set-hit":""}`}>
+                      <span className="ah-set-date">{formatDate(s.date)}</span>
+                      <span className="ah-set-reps">{s.reps} reps{s.hitGoal&&" 🔥"}</span>
+                      <div className="ah-set-actions">
+                        <button className="ah-icon-btn" onClick={()=>setEditingEntry(s)} title="Edit"><I.Edit/></button>
+                        <button className="ah-icon-btn ah-del-btn" onClick={()=>handleDeleteEntry(s)} title="Delete"><I.Trash/></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="ah-weight-best">Best: {best} reps · {sets.length} session{sets.length!==1?"s":""}</div>
+              </div>
+            );
+          })
+        }
+      </div>
+
+      {showLog && <LogSetModal exercise={exercise} goal={goal} lastEntry={lastEntry} onLog={handleLog} onClose={()=>setShowLog(false)}/>}
       {showGoal && <SetGoalModal exercise={exercise} currentGoal={goal} onSave={setGoalFn} onClose={()=>setShowGoal(false)}/>}
+      {showRestTimer && <RestTimer onClose={()=>setShowRestTimer(false)}/>}
+      {editingEntry && <EditSetModal entry={editingEntry} onSave={(orig,upd)=>handleEditEntry(editingEntry,upd)} onClose={()=>setEditingEntry(null)}/>}
     </div>
   );
 }
@@ -268,7 +551,7 @@ function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenPro
                         <span className="ah-home-today-ex-cat">{ex.category}</span>
                       </div>
                       <div className="ah-home-today-ex-right">
-                        {g && <span className="ah-home-today-ex-goal">{g.targetReps}×{g.weight}kg</span>}
+                        {g && <span className="ah-home-today-ex-goal">{g.minReps??g.targetReps}–{g.maxReps??g.targetReps}×{g.weight}kg</span>}
                         {last?.hitGoal && <span className="ah-mini-fire"><I.Fire/></span>}
                       </div>
                     </div>
@@ -301,7 +584,7 @@ function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenPro
                 <span className="ah-exercise-name">{ex.name}</span>
                 <span className="ah-exercise-meta">
                   <span className="ah-exercise-cat-tag">{ex.category}</span>
-                  {g && <span className="ah-exercise-goal">{g.targetReps}×{g.weight}kg</span>}
+                  {g && <span className="ah-exercise-goal">{g.minReps??g.targetReps}–{g.maxReps??g.targetReps}×{g.weight}kg</span>}
                   {assignedDays.length > 0 && <span className="ah-exercise-days">{assignedDays.map(d=>d.slice(0,3)).join(", ")}</span>}
                 </span>
               </div>
@@ -341,26 +624,39 @@ function AddPRModal({ exercises, onSave, onClose }) {
 
 function PRsTab({ userData, onUpdateData }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editingPR, setEditingPR] = useState(null); // { exId, entry }
   const exercises = userData.exerciseList || [];
   const manualPRs = userData.manualPRs || {};
 
-  const getPR = (ex) => {
+  const getBestEntry = (ex) => {
     const hist = userData.exercises[ex.id]?.history || [];
     const manual = manualPRs[ex.id] || [];
     const all = [...hist, ...manual];
-    if (all.length === 0) return null;
-    return all.reduce((a, b) => (b.weight * b.reps > a.weight * a.reps) ? b : a, all[0]);
+    if (!all.length) return null;
+    return all.reduce((a,b) => calc1RM(b.weight,b.reps) > calc1RM(a.weight,a.reps) ? b : a, all[0]);
   };
 
-  const prs = exercises.map(ex => ({ ...ex, pr: getPR(ex) }));
+  const prs = exercises.map(ex => ({ ...ex, pr: getBestEntry(ex) }));
   const categories = [...new Set(exercises.map(e => e.category))];
 
   const handleSavePR = (exId, weight, reps, dateStr) => {
     const entry = { date: new Date(dateStr).toISOString(), weight, reps, manual: true };
     const existing = manualPRs[exId] || [];
-    const newManual = { ...manualPRs, [exId]: [...existing, entry] };
-    const u = { ...userData, manualPRs: newManual }; saveData(u); onUpdateData(u);
-    setShowAdd(false);
+    const u = { ...userData, manualPRs: { ...manualPRs, [exId]: [...existing, entry] } };
+    saveData(u); onUpdateData(u); setShowAdd(false);
+  };
+
+  const handleDeleteManualPR = (exId, entry) => {
+    const updated = (manualPRs[exId] || []).filter(e => !(e.date===entry.date && e.weight===entry.weight && e.reps===entry.reps));
+    const u = { ...userData, manualPRs: { ...manualPRs, [exId]: updated } };
+    saveData(u); onUpdateData(u);
+  };
+
+  const handleEditManualPR = (exId, original, updated) => {
+    const list = manualPRs[exId] || [];
+    const newList = list.map(e => (e.date===original.date && e.weight===original.weight && e.reps===original.reps) ? { ...updated, manual:true } : e);
+    const u = { ...userData, manualPRs: { ...manualPRs, [exId]: newList } };
+    saveData(u); onUpdateData(u); setEditingPR(null);
   };
 
   return (
@@ -369,30 +665,54 @@ function PRsTab({ userData, onUpdateData }) {
         <h1 className="ah-page-title"><I.Trophy s={24}/> Personal Records</h1>
         {exercises.length>0 && <button className="ah-btn-add" onClick={()=>setShowAdd(true)}><I.Plus/></button>}
       </div>
-      <p className="ah-page-sub">Your all-time bests across every exercise</p>
-      {exercises.length === 0 ? <div className="ah-empty-state"><I.Trophy s={32}/><p>Add exercises and log sets to see your PRs</p></div>
-      : categories.map(cat => (
-        <div key={cat} className="ah-cat-group"><p className="ah-cat-label">{cat}</p>
-          {prs.filter(e=>e.category===cat).map(ex => (
-            <div key={ex.id} className={`ah-pr-card ${ex.pr?"":"ah-pr-empty"}`}>
-              <div className="ah-pr-left">
-                <div className="ah-pr-name">{ex.name}</div>
-                {ex.pr?.manual && <span className="ah-pr-manual-tag">Manual</span>}
-              </div>
-              {ex.pr ? <div className="ah-pr-details"><div className="ah-pr-main"><span className="ah-pr-weight">{ex.pr.weight}<small>kg</small></span><span className="ah-pr-x">×</span><span className="ah-pr-reps">{ex.pr.reps}<small>reps</small></span></div><div className="ah-pr-date">{formatDate(ex.pr.date)}</div></div>
-              : <div className="ah-pr-none">No PR yet</div>}
-            </div>
-          ))}
-        </div>
-      ))}
+      <p className="ah-page-sub">Your all-time bests · estimated 1RM shown</p>
+      {exercises.length === 0
+        ? <div className="ah-empty-state"><I.Trophy s={32}/><p>Add exercises and log sets to see your PRs</p></div>
+        : categories.map(cat => (
+          <div key={cat} className="ah-cat-group"><p className="ah-cat-label">{cat}</p>
+            {prs.filter(e=>e.category===cat).map(ex => {
+              const orm = ex.pr ? calc1RM(ex.pr.weight, ex.pr.reps) : null;
+              const isManual = ex.pr?.manual;
+              return (
+                <div key={ex.id} className={`ah-pr-card ${ex.pr?"":"ah-pr-empty"}`}>
+                  <div className="ah-pr-left">
+                    <div className="ah-pr-name">{ex.name}</div>
+                    {isManual && <span className="ah-pr-manual-tag">Manual</span>}
+                  </div>
+                  {ex.pr ? (
+                    <div className="ah-pr-right">
+                      <div className="ah-pr-details">
+                        <div className="ah-pr-main">
+                          <span className="ah-pr-weight">{ex.pr.weight}<small>kg</small></span>
+                          <span className="ah-pr-x">×</span>
+                          <span className="ah-pr-reps">{ex.pr.reps}<small>reps</small></span>
+                        </div>
+                        {orm && <div className="ah-pr-1rm">1RM ~{orm}kg</div>}
+                        <div className="ah-pr-date">{formatDate(ex.pr.date)}</div>
+                      </div>
+                      {isManual && (
+                        <div className="ah-pr-actions">
+                          <button className="ah-icon-btn" onClick={()=>setEditingPR({exId:ex.id,entry:ex.pr})}><I.Edit/></button>
+                          <button className="ah-icon-btn ah-del-btn" onClick={()=>handleDeleteManualPR(ex.id,ex.pr)}><I.Trash/></button>
+                        </div>
+                      )}
+                    </div>
+                  ) : <div className="ah-pr-none">No PR yet</div>}
+                </div>
+              );
+            })}
+          </div>
+        ))
+      }
       {showAdd && <AddPRModal exercises={exercises} onSave={handleSavePR} onClose={()=>setShowAdd(false)}/>}
+      {editingPR && <EditPRModal entry={editingPR.entry} onSave={(_,upd)=>handleEditManualPR(editingPR.exId,editingPR.entry,upd)} onClose={()=>setEditingPR(null)}/>}
     </div>
   );
 }
 
 // ─────────────────── TAB: SPLIT ───────────────────
 const SPLIT_PRESETS = ["Push", "Pull", "Legs", "Upper Body", "Lower Body", "Full Body", "Arms", "Back & Biceps", "Chest & Triceps", "Shoulders", "Rest Day"];
-const MUSCLE_GROUPS = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core", "Full Body"];
+const MUSCLE_GROUPS = ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs", "Core", "Full Body"];
 
 function SplitTab({ userData, onUpdateData }) {
   const [editDay, setEditDay] = useState(null);
@@ -464,7 +784,7 @@ function SplitTab({ userData, onUpdateData }) {
         </div>
         {todayMuscles.length > 0 && <div className="ah-muscle-tags">{todayMuscles.map(m=><span key={m} className="ah-muscle-tag">{m}</span>)}</div>}
         {todayExs.length === 0 ? <p className="ah-today-empty">Rest day or no exercises assigned</p>
-        : <div className="ah-today-list">{todayExs.map(ex=>{const g=userData.exercises[ex.id]?.goal;return <div key={ex.id} className="ah-today-exercise"><span className="ah-today-ex-name">{ex.name}</span>{g&&<span className="ah-today-ex-goal">{g.targetReps}×{g.weight}kg</span>}</div>})}</div>}
+        : <div className="ah-today-list">{todayExs.map(ex=>{const g=userData.exercises[ex.id]?.goal;return <div key={ex.id} className="ah-today-exercise"><span className="ah-today-ex-name">{ex.name}</span>{g&&<span className="ah-today-ex-goal">{g.minReps??g.targetReps}–{g.maxReps??g.targetReps}×{g.weight}kg</span>}</div>})}</div>}
       </div>
 
       <h3 className="ah-section-title" style={{marginTop:20,marginBottom:12}}>Weekly Schedule</h3>
@@ -507,7 +827,7 @@ function SplitTab({ userData, onUpdateData }) {
                         <span className="ah-split-ex-num">{idx+1}</span>
                         <div className="ah-split-ex-info">
                           <span className="ah-split-ex-name">{ex.name}</span>
-                          <span className="ah-split-ex-detail">{ex.category}{g ? ` · ${g.targetReps}×${g.weight}kg` : ""}</span>
+                          <span className="ah-split-ex-detail">{ex.category}{g ? ` · ${g.minReps??g.targetReps}–${g.maxReps??g.targetReps}×${g.weight}kg` : ""}</span>
                         </div>
                         <button className="ah-icon-btn ah-del-btn" onClick={()=>toggleExercise(day,ex.id)} title="Remove"><I.Trash/></button>
                       </div>
@@ -647,32 +967,117 @@ function ProgressTab({ userData }) {
 }
 
 // ─────────────────── TAB: GROWTH ───────────────────
+function BodyWeightChart({ entries }) {
+  const canvasRef = useRef(null);
+  const sorted = [...entries].sort((a,b)=>new Date(a.date)-new Date(b.date));
+  useEffect(() => {
+    if (!canvasRef.current || sorted.length < 2) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio||1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width=rect.width*dpr; canvas.height=rect.height*dpr; ctx.scale(dpr,dpr);
+    const W=rect.width,H=rect.height,pad={top:16,right:12,bottom:28,left:38};
+    const cW=W-pad.left-pad.right,cH=H-pad.top-pad.bottom;
+    const weights=sorted.map(e=>e.weight);
+    const minW=Math.min(...weights)-2,maxW=Math.max(...weights)+2,range=maxW-minW||1;
+    ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle="rgba(255,255,255,0.06)"; ctx.lineWidth=1;
+    for(let i=0;i<=3;i++){const y=pad.top+(cH/3)*i;ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(W-pad.right,y);ctx.stroke();}
+    ctx.fillStyle="#666"; ctx.font="10px Outfit"; ctx.textAlign="right";
+    for(let i=0;i<=3;i++){const v=maxW-(range/3)*i;ctx.fillText(v.toFixed(1),pad.left-4,pad.top+(cH/3)*i+4);}
+    ctx.textAlign="center";
+    const step=Math.max(1,Math.floor(sorted.length/4));
+    sorted.forEach((e,i)=>{if(i%step===0||i===sorted.length-1){const x=pad.left+(i/(sorted.length-1))*cW;const d=new Date(e.date);ctx.fillStyle="#666";ctx.fillText(`${d.getDate()}/${d.getMonth()+1}`,x,H-6);}});
+    ctx.beginPath(); ctx.strokeStyle="var(--gold)"; ctx.lineWidth=2.5; ctx.lineJoin="round";
+    sorted.forEach((e,i)=>{const x=pad.left+(i/(sorted.length-1))*cW;const y=pad.top+cH-((e.weight-minW)/range)*cH;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+    ctx.stroke();
+    const grad=ctx.createLinearGradient(0,pad.top,0,pad.top+cH);
+    grad.addColorStop(0,"rgba(200,168,78,0.2)"); grad.addColorStop(1,"rgba(200,168,78,0)");
+    ctx.lineTo(pad.left+cW,pad.top+cH); ctx.lineTo(pad.left,pad.top+cH); ctx.closePath();
+    ctx.fillStyle=grad; ctx.fill();
+    sorted.forEach((e,i)=>{const x=pad.left+(i/(sorted.length-1))*cW;const y=pad.top+cH-((e.weight-minW)/range)*cH;ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fillStyle="var(--gold)";ctx.fill();});
+  }, [entries]);
+  if (sorted.length < 2) return null;
+  return <canvas ref={canvasRef} className="ah-bw-chart"/>;
+}
+
 function GrowthTab({ userData, onUpdateData }) {
   const fileRef = useRef(null);
+  const [bwInput, setBwInput] = useState("");
   const photos = userData.photos || [];
+  const bodyWeights = userData.bodyWeight || [];
+  const todayBW = bodyWeights.find(e=>e.date.slice(0,10)===todayStr());
+  const recentBW = bodyWeights.slice(0,7);
+
+  const logBodyWeight = () => {
+    const w = Number(bwInput);
+    if (!w || w <= 0) return;
+    const entry = { date: new Date().toISOString(), weight: w };
+    const filtered = bodyWeights.filter(e=>e.date.slice(0,10)!==todayStr());
+    const sorted = [entry,...filtered].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const u={...userData, bodyWeight:sorted}; saveData(u); onUpdateData(u); setBwInput("");
+  };
+  const deleteBW = (entry) => {
+    const u={...userData,bodyWeight:bodyWeights.filter(e=>!(e.date===entry.date&&e.weight===entry.weight))};
+    saveData(u); onUpdateData(u);
+  };
+
   const handleFile = (e) => {
-    const file = e.target.files?.[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const np = { id: Date.now(), date: new Date().toISOString(), data: ev.target.result };
-      const u = { ...userData, photos: [np, ...photos] }; saveData(u); onUpdateData(u);
+    const file=e.target.files?.[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      const np={id:Date.now(),date:new Date().toISOString(),data:ev.target.result};
+      const u={...userData,photos:[np,...photos]}; saveData(u); onUpdateData(u);
     };
-    reader.readAsDataURL(file); e.target.value = "";
+    reader.readAsDataURL(file); e.target.value="";
   };
   const deletePhoto = (id) => { const u={...userData,photos:photos.filter(p=>p.id!==id)}; saveData(u); onUpdateData(u); };
+
   return (
     <div className="ah-page ah-fade-in">
-      <h1 className="ah-page-title"><I.Camera s={24}/> Growth</h1>
-      <p className="ah-page-sub">Track your physique over time</p>
-      <button className="ah-btn-primary ah-btn-log" onClick={()=>fileRef.current?.click()}><I.Camera s={18}/> Add Progress Photo</button>
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handleFile}/>
-      {photos.length===0 ? <div className="ah-empty-state"><I.Camera s={32}/><p>No progress photos yet</p></div>
-      : <div className="ah-photo-grid">{photos.map(p=>(
-        <div key={p.id} className="ah-photo-card">
-          <div className="ah-photo-img-wrap"><img src={p.data} alt="Progress" className="ah-photo-img"/></div>
-          <div className="ah-photo-footer"><span className="ah-photo-date">{formatDate(p.date)}</span><button className="ah-icon-btn ah-del-btn" onClick={()=>deletePhoto(p.id)}><I.Trash/></button></div>
+      <h1 className="ah-page-title"><I.Chart s={24}/> Growth</h1>
+      <p className="ah-page-sub">Body weight & progress photos</p>
+
+      {/* ── Body Weight ── */}
+      <h3 className="ah-section-title" style={{marginBottom:12}}>Body Weight</h3>
+      <div className="ah-bw-log-row">
+        <input className="ah-input ah-bw-input" type="number" step="0.1" placeholder={todayBW ? `Today: ${todayBW.weight}kg` : "e.g. 82.5"} value={bwInput} onChange={e=>setBwInput(e.target.value)}/>
+        <span className="ah-bw-unit">kg</span>
+        <button className="ah-btn-primary ah-bw-btn" onClick={logBodyWeight}>Log</button>
+      </div>
+
+      {bodyWeights.length >= 2 && <BodyWeightChart entries={bodyWeights}/>}
+
+      {recentBW.length > 0 && (
+        <div className="ah-bw-list">
+          {recentBW.map((e,i)=>(
+            <div key={i} className="ah-bw-row">
+              <span className="ah-bw-date">{formatDate(e.date)}</span>
+              <span className="ah-bw-val">{e.weight}<small>kg</small></span>
+              {i>0 && recentBW[i-1] && <span className={`ah-bw-diff ${e.weight<recentBW[i-1].weight?"ah-bw-down":e.weight>recentBW[i-1].weight?"ah-bw-up":""}`}>
+                {e.weight<recentBW[i-1].weight?`-${(recentBW[i-1].weight-e.weight).toFixed(1)}`:e.weight>recentBW[i-1].weight?`+${(e.weight-recentBW[i-1].weight).toFixed(1)}`:"—"}
+              </span>}
+              <button className="ah-icon-btn ah-del-btn" onClick={()=>deleteBW(e)}><I.Trash/></button>
+            </div>
+          ))}
         </div>
-      ))}</div>}
+      )}
+      {bodyWeights.length===0 && <p className="ah-empty-text" style={{marginBottom:24}}>Log your first body weight above</p>}
+
+      {/* ── Progress Photos ── */}
+      <h3 className="ah-section-title" style={{marginTop:28,marginBottom:12}}><I.Camera s={18}/> Progress Photos</h3>
+      <button className="ah-btn-secondary ah-btn-photo" onClick={()=>fileRef.current?.click()}><I.Camera s={16}/> Add Photo</button>
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handleFile}/>
+      {photos.length===0
+        ? <div className="ah-empty-state" style={{marginTop:12}}><I.Camera s={28}/><p>No progress photos yet</p></div>
+        : <div className="ah-photo-grid">{photos.map(p=>(
+          <div key={p.id} className="ah-photo-card">
+            <div className="ah-photo-img-wrap"><img src={p.data} alt="Progress" className="ah-photo-img"/></div>
+            <div className="ah-photo-footer"><span className="ah-photo-date">{formatDate(p.date)}</span><button className="ah-icon-btn ah-del-btn" onClick={()=>deletePhoto(p.id)}><I.Trash/></button></div>
+          </div>
+        ))}</div>
+      }
     </div>
   );
 }
@@ -807,21 +1212,62 @@ function TabBar({ active, onChange }) {
 export default function AlariHealth() {
   const [userData, setUserData] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [tab, setTab] = useState("home");
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const syncTimer = useRef(null);
 
-  useEffect(() => { const d=loadData(); if(d?.phone){setUserData(d);setIsLoggedIn(true);applyTheme(d.theme||"dark_gold");} }, []);
+  // On mount: restore from localStorage instantly, then refresh from cloud
+  useEffect(() => {
+    const init = async () => {
+      const cached = loadData();
+      if (cached?.phone) {
+        setUserData(cached); setIsLoggedIn(true); applyTheme(cached.theme || "dark_gold");
+        const fresh = await loadUserData(cached.phone);
+        if (fresh) {
+          const merged = { ...fresh, photos: cached.photos || [] };
+          saveData(merged); setUserData(merged); applyTheme(merged.theme || "dark_gold");
+        }
+      }
+      setLoading(false);
+    };
+    init();
+  }, []);
 
-  const handleLogin = (phone, name) => {
-    const existing = loadData();
-    if (existing?.phone === phone) { setUserData(existing); applyTheme(existing.theme||"dark_gold"); }
-    else {
-      const nd={phone,name,exerciseList:[],exercises:{},splits:{},splitLabels:{},splitMuscles:{},photos:[],manualPRs:{},theme:"dark_gold",joinDate:new Date().toISOString(),onboarded:false};
-      saveData(nd); setUserData(nd); setShowOnboarding(true);
+  // Auto-sync any userData change to Supabase (debounced 1.5s)
+  useEffect(() => {
+    if (!userData) return;
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(async () => {
+      setSyncing(true);
+      await saveUserData(userData);
+      setSyncing(false);
+    }, 1500);
+    return () => clearTimeout(syncTimer.current);
+  }, [userData]);
+
+  const handleLogin = async (phone, name) => {
+    setLoading(true);
+    const cloudData = await loadUserData(phone);
+    if (cloudData) {
+      const local = loadData();
+      const merged = { ...cloudData, photos: local?.photos || [] };
+      saveData(merged); setUserData(merged); applyTheme(merged.theme || "dark_gold");
+    } else {
+      const local = loadData();
+      if (local?.phone === phone) {
+        setUserData(local); applyTheme(local.theme || "dark_gold");
+        await saveUserData(local);
+      } else {
+        const nd = { phone, name, exerciseList:[], exercises:{}, splits:{}, splitLabels:{}, splitMuscles:{}, photos:[], manualPRs:{}, bodyWeight:[], theme:"dark_gold", joinDate:new Date().toISOString(), onboarded:false };
+        saveData(nd); await saveUserData(nd); setUserData(nd); setShowOnboarding(true);
+      }
     }
     setIsLoggedIn(true);
+    setLoading(false);
   };
 
   const handleUpdateExerciseData = (exId, data) => {
@@ -832,6 +1278,16 @@ export default function AlariHealth() {
     setShowOnboarding(false);
     const u = { ...userData, onboarded: true }; saveData(u); setUserData(u);
   };
+
+  if (loading) return (
+    <><style>{styles}</style>
+    <div className="ah-app">
+      <div className="ah-loading-screen">
+        <div className="ah-loading-logo"><span className="ah-logo-a">A</span><span className="ah-logo-h">H</span></div>
+        <div className="ah-loading-spinner"/>
+      </div>
+    </div></>
+  );
 
   if (!isLoggedIn) return (<><style>{styles}</style><div className="ah-app"><WelcomeScreen onLogin={handleLogin}/></div></>);
 
@@ -847,6 +1303,7 @@ export default function AlariHealth() {
           : tab==="progress" ? <ProgressTab userData={userData}/>
           : <GrowthTab userData={userData} onUpdateData={setUserData}/>}
         </div>
+        {syncing && <div className="ah-sync-pill">Saving…</div>}
         {!showProfile && <TabBar active={selectedExercise?"home":tab} onChange={(t)=>{setTab(t);setSelectedExercise(null);}}/>}
         {showOnboarding && <OnboardingScreen onDismiss={handleDismissOnboarding}/>}
       </div>
@@ -867,6 +1324,100 @@ const styles = `
 }
 .ah-content{flex:1;overflow-y:auto;padding-bottom:85px;}
 .ah-page{padding:calc(env(safe-area-inset-top, 20px) + 12px) 20px 20px;}
+
+/* ── rest timer ── */
+.ah-timer-modal{text-align:center}
+.ah-timer-label{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:var(--text2);margin-bottom:16px}
+.ah-timer-circle-wrap{position:relative;width:140px;height:140px;margin:0 auto 20px}
+.ah-timer-svg{width:100%;height:100%}
+.ah-timer-count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.ah-timer-presets{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:4px 0 0}
+.ah-timer-preset{padding:14px 0;background:var(--bg3);border:1px solid var(--card-border);border-radius:10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s}
+.ah-timer-preset:hover{border-color:var(--gold);color:var(--gold)}
+
+/* ── 1RM chip ── */
+.ah-1rm-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);margin-top:10px;background:var(--bg3);border:1px solid var(--card-border);border-radius:20px;padding:4px 10px}
+.ah-1rm-chip strong{color:var(--gold)}
+.ah-weight-1rm{font-size:11px;color:var(--text3)}
+
+/* ── today logged note ── */
+.ah-today-logged{font-size:12px;color:var(--text3);margin:-6px 0 12px;text-align:center}
+
+/* ── set action buttons ── */
+.ah-set-actions{display:flex;gap:2px;margin-left:auto}
+
+/* ── PR card updates ── */
+.ah-pr-right{display:flex;align-items:center;gap:8px}
+.ah-pr-actions{display:flex;gap:2px}
+.ah-pr-1rm{font-size:11px;color:var(--gold);margin-top:2px}
+
+/* ── body weight section ── */
+.ah-bw-log-row{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.ah-bw-input{flex:1;margin-bottom:0}
+.ah-bw-unit{color:var(--text2);font-size:14px;white-space:nowrap}
+.ah-bw-btn{width:auto;padding:14px 20px;margin-top:0}
+.ah-bw-chart{width:100%;height:130px;display:block;margin-bottom:12px}
+.ah-bw-list{background:var(--card);border:1px solid var(--card-border);border-radius:12px;overflow:hidden;margin-bottom:8px}
+.ah-bw-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--card-border);font-size:13px}
+.ah-bw-row:last-child{border-bottom:none}
+.ah-bw-date{flex:1;color:var(--text2)}
+.ah-bw-val{font-weight:600;color:var(--text)}
+.ah-bw-val small{font-size:11px;color:var(--text2);margin-left:2px}
+.ah-bw-diff{font-size:12px;min-width:36px;text-align:right}
+.ah-bw-down{color:#4ADE80}.ah-bw-up{color:var(--danger)}
+.ah-btn-photo{width:auto;padding:12px 20px;margin-bottom:16px}
+
+/* ── rep range modal ── */
+.ah-rep-range-row{display:flex;align-items:flex-end;gap:10px;margin-bottom:16px}
+.ah-rep-range-field{flex:1;margin-bottom:0!important}
+.ah-rep-range-dash{font-size:20px;font-weight:300;color:var(--text2);padding-bottom:14px}
+.ah-modal-sub{color:var(--text2);font-size:13px;margin:-4px 0 16px;line-height:1.5}
+
+/* ── rep progression dots ── */
+.ah-weight-progress{margin-top:14px;padding-top:14px;border-top:1px solid var(--card-border)}
+.ah-weight-progress-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);display:block;margin-bottom:8px}
+.ah-rep-dots{display:flex;flex-wrap:wrap;gap:6px}
+.ah-rep-dot{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:0 6px;border-radius:8px;font-size:13px;font-weight:600;border:1.5px solid transparent}
+.ah-rep-dot-low{background:rgba(255,255,255,0.04);border-color:var(--card-border);color:var(--text3)}
+.ah-rep-dot-good{background:rgba(200,168,78,0.1);border-color:rgba(200,168,78,0.3);color:var(--gold)}
+.ah-rep-dot-gold{background:var(--gold);border-color:var(--gold);color:#0A0A0A}
+
+/* ── log row + override ── */
+.ah-log-row{display:flex;gap:10px;margin:16px 0}
+.ah-btn-override{padding:0 18px;background:var(--bg3);border:1px solid var(--card-border);border-radius:10px;color:var(--text2);font-family:'Outfit',sans-serif;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .2s}
+.ah-btn-override:hover{border-color:var(--gold);color:var(--gold)}
+
+/* ── feedback banners ── */
+.ah-range-banner{background:rgba(200,168,78,0.1);border:1px solid rgba(200,168,78,0.3);color:var(--gold);border-radius:8px;padding:10px 14px;font-size:13px;font-weight:500;margin-bottom:8px;text-align:center}
+
+/* ── weight history groups ── */
+.ah-weight-group{background:var(--card);border:1px solid var(--card-border);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.ah-weight-current{border-color:rgba(200,168,78,0.35)}
+.ah-weight-group-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 8px}
+.ah-weight-group-kg{font-size:22px;font-weight:700;color:var(--text)}
+.ah-weight-group-kg small{font-size:13px;font-weight:400;color:var(--text2);margin-left:2px}
+.ah-weight-group-meta{display:flex;align-items:center;gap:6px}
+.ah-weight-range-label{font-size:11px;color:var(--text3)}
+.ah-hit-badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--gold);background:rgba(200,168,78,0.1);padding:2px 7px;border-radius:20px}
+.ah-current-badge{font-size:11px;font-weight:600;color:#0A0A0A;background:var(--gold);padding:2px 8px;border-radius:20px}
+.ah-weight-set-list{padding:0 14px}
+.ah-weight-set-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--card-border);font-size:13px}
+.ah-weight-set-row.ah-set-hit{background:transparent}
+.ah-weight-set-row.ah-set-hit .ah-set-reps{color:var(--gold);font-weight:600}
+.ah-set-date{color:var(--text2);flex:1}
+.ah-set-time{color:var(--text3);font-size:11px}
+.ah-set-reps{font-weight:600;color:var(--text)}
+.ah-weight-best{padding:8px 14px 12px;font-size:12px;color:var(--text3)}
+
+/* ── loading screen ── */
+.ah-loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:24px;background:var(--bg)}
+.ah-loading-logo{display:inline-flex;gap:2px;font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:var(--gold);border:1.5px solid var(--gold-dim);border-radius:50%;width:56px;height:56px;align-items:center;justify-content:center;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ah-loading-spinner{width:28px;height:28px;border:2.5px solid var(--gold-dim);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite}
+.ah-sync-pill{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);right:12px;background:var(--bg3);border:1px solid var(--card-border);color:var(--text2);font-size:11px;padding:4px 10px;border-radius:20px;z-index:999;pointer-events:none}
+.ah-last-entry{display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--card-border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:var(--text2)}
+.ah-last-entry strong{color:var(--text);font-weight:600}
+.ah-last-date{color:var(--text3);font-size:12px}
 
 @keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeOut{from{opacity:1}to{opacity:0}}
