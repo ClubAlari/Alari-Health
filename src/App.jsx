@@ -499,6 +499,9 @@ function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
 function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenProfile }) {
   const [showAdd, setShowAdd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [showTheme, setShowTheme] = useState(false);
+  const currentTheme = userData.theme || "dark_gold";
+  const changeTheme = (id) => { applyTheme(id); const u={...userData,theme:id}; saveData(u); onUpdateData(u); };
   const exercises = userData.exerciseList || [];
   const categories = [...new Set(exercises.map(e => e.category))];
   const addEx = (ex) => {
@@ -519,8 +522,12 @@ function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenPro
           <p className="ah-dash-greeting">Welcome back,</p>
           <h1 className="ah-dash-name-big">{userData.name}</h1>
         </div>
-        <button className="ah-profile-btn" onClick={onOpenProfile} title="Profile"><I.User s={20}/></button>
+        <div className="ah-dash-header-btns">
+          <button className="ah-profile-btn" onClick={()=>setShowTheme(true)} title="Change theme"><I.Palette s={18}/></button>
+          <button className="ah-profile-btn" onClick={onOpenProfile} title="Profile"><I.User s={20}/></button>
+        </div>
       </div>
+      {showTheme && <ThemeSheet current={currentTheme} onChange={changeTheme} onClose={()=>setShowTheme(false)}/>}
 
       {/* Today's Split */}
       {(() => {
@@ -1082,11 +1089,45 @@ function GrowthTab({ userData, onUpdateData }) {
   );
 }
 
+// ─────────────────── THEME SHEET ───────────────────
+function ThemeSheet({ current, onChange, onClose }) {
+  return (
+    <div className="ah-modal-overlay ah-sheet-overlay" onClick={onClose}>
+      <div className="ah-theme-sheet" onClick={e=>e.stopPropagation()}>
+        <div className="ah-sheet-handle"/>
+        <h2 className="ah-sheet-title">Choose Mode</h2>
+        <div className="ah-theme-cards">
+          {Object.values(THEMES).map(t => (
+            <button key={t.id} className={`ah-theme-card ${current===t.id?"ah-theme-card-active":""}`} onClick={()=>{onChange(t.id);onClose();}}>
+              {/* Mini app preview */}
+              <div className="ah-theme-card-preview" style={{background:t.bg,borderColor:t.cardBorder}}>
+                <div className="ah-tcp-bar" style={{background:t.card,borderColor:t.cardBorder}}>
+                  <div className="ah-tcp-dot" style={{background:t.accent}}/>
+                  <div className="ah-tcp-line" style={{background:t.text3}}/>
+                </div>
+                <div className="ah-tcp-card" style={{background:t.card,borderColor:t.cardBorder}}>
+                  <div className="ah-tcp-line ah-tcp-line-short" style={{background:t.text3}}/>
+                  <div className="ah-tcp-accent-bar" style={{background:t.accent}}/>
+                </div>
+              </div>
+              <div className="ah-theme-card-info">
+                <span className="ah-theme-card-name" style={{color:current===t.id?t.accent:"inherit"}}>{t.name}</span>
+                <span className="ah-theme-card-desc">{t.desc}</span>
+              </div>
+              {current===t.id && <div className="ah-theme-card-check" style={{background:t.accent}}><I.Check/></div>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────── THEMES ───────────────────
 const THEMES = {
-  dark_gold: { id:"dark_gold", name:"Black & Gold", bg:"#0A0A0A", bg2:"#111111", bg3:"#1A1A1A", card:"#141414", cardBorder:"#222", text:"#F5F5F0", text2:"#999", text3:"#555", accent:"#C8A84E", accentLight:"#E8D48B" },
-  light_gold: { id:"light_gold", name:"White & Gold", bg:"#F5F5F0", bg2:"#EAEAE5", bg3:"#E0E0DB", card:"#FFFFFF", cardBorder:"#D4D4CF", text:"#1A1A1A", text2:"#666", text3:"#999", accent:"#B8942E", accentLight:"#D4B45E" },
-  dark_neon: { id:"dark_neon", name:"Black & Neon", bg:"#0A0A0A", bg2:"#111111", bg3:"#1A1A1A", card:"#141414", cardBorder:"#222", text:"#F5F5F0", text2:"#999", text3:"#555", accent:"#D4FF00", accentLight:"#E8FF66" },
+  dark_gold:  { id:"dark_gold",  name:"Dark Mode",   desc:"Black & Gold",        bg:"#0A0A0A", bg2:"#111111", bg3:"#1A1A1A", card:"#141414", cardBorder:"#222",     text:"#F5F5F0", text2:"#999", text3:"#555", accent:"#C8A84E", accentLight:"#E8D48B" },
+  light_gold: { id:"light_gold", name:"Light Mode",  desc:"White & Gold",        bg:"#F5F5F0", bg2:"#EAEAE5", bg3:"#E0E0DB", card:"#FFFFFF", cardBorder:"#D4D4CF", text:"#1A1A1A", text2:"#666", text3:"#999", accent:"#B8942E", accentLight:"#D4B45E" },
+  dark_neon:  { id:"dark_neon",  name:"Energy Mode", desc:"Black & Neon Green",  bg:"#0A0A0A", bg2:"#0D0D0D", bg3:"#141414", card:"#111111", cardBorder:"#1A2E1A", text:"#F0FFF0", text2:"#7BAF7B", text3:"#4A6B4A", accent:"#39FF14", accentLight:"#80FF57" },
 };
 
 function applyTheme(themeId) {
@@ -1155,17 +1196,25 @@ function ProfilePage({ userData, onUpdateData, onLogout, onBack }) {
         <div className="ah-stat-card"><span className="ah-stat-val">{totalSets}</span><span className="ah-stat-label">Total Sets</span></div>
       </div>
 
-      <h3 className="ah-section-title" style={{marginTop:24,marginBottom:12}}><I.Palette/> Theme</h3>
-      <div className="ah-theme-list">
+      <h3 className="ah-section-title" style={{marginTop:24,marginBottom:12}}><I.Palette/> Colour Mode</h3>
+      <div className="ah-theme-cards">
         {Object.values(THEMES).map(t => (
-          <button key={t.id} className={`ah-theme-option ${currentTheme===t.id?"ah-theme-active":""}`} onClick={()=>changeTheme(t.id)}>
-            <div className="ah-theme-preview">
-              <div className="ah-theme-swatch" style={{background:t.bg,border:`1px solid ${t.cardBorder}`}}>
-                <div className="ah-theme-accent" style={{background:t.accent}}/>
+          <button key={t.id} className={`ah-theme-card ${currentTheme===t.id?"ah-theme-card-active":""}`} onClick={()=>changeTheme(t.id)}>
+            <div className="ah-theme-card-preview" style={{background:t.bg,borderColor:t.cardBorder}}>
+              <div className="ah-tcp-bar" style={{background:t.card,borderColor:t.cardBorder}}>
+                <div className="ah-tcp-dot" style={{background:t.accent}}/>
+                <div className="ah-tcp-line" style={{background:t.text3}}/>
+              </div>
+              <div className="ah-tcp-card" style={{background:t.card,borderColor:t.cardBorder}}>
+                <div className="ah-tcp-line ah-tcp-line-short" style={{background:t.text3}}/>
+                <div className="ah-tcp-accent-bar" style={{background:t.accent}}/>
               </div>
             </div>
-            <span className="ah-theme-name">{t.name}</span>
-            {currentTheme===t.id && <I.Check/>}
+            <div className="ah-theme-card-info">
+              <span className="ah-theme-card-name" style={{color:currentTheme===t.id?t.accent:"inherit"}}>{t.name}</span>
+              <span className="ah-theme-card-desc">{t.desc}</span>
+            </div>
+            {currentTheme===t.id && <div className="ah-theme-card-check" style={{background:t.accent}}><I.Check/></div>}
           </button>
         ))}
       </div>
@@ -1656,14 +1705,34 @@ const styles = `
 .ah-btn-logout:hover{background:rgba(232,69,69,0.1)}
 
 /* ─── THEME PICKER ─── */
+/* ── legacy theme (kept for safety) ── */
 .ah-theme-list{display:flex;flex-direction:column;gap:8px}
-.ah-theme-option{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--card);border:1px solid var(--card-border);border-radius:12px;cursor:pointer;transition:all .2s;font-family:'Outfit',sans-serif;font-size:14px;color:var(--text);width:100%}
-.ah-theme-option:hover{border-color:var(--gold)}
-.ah-theme-active{border-color:var(--gold);background:var(--gold-dim)}
-.ah-theme-preview{flex-shrink:0}
-.ah-theme-swatch{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center}
-.ah-theme-accent{width:16px;height:16px;border-radius:4px}
-.ah-theme-name{flex:1;font-weight:500}
+
+/* ── theme cards ── */
+.ah-dash-header-btns{display:flex;gap:8px;align-items:center}
+.ah-theme-cards{display:flex;flex-direction:column;gap:10px}
+.ah-theme-card{display:flex;align-items:center;gap:14px;padding:14px;background:var(--card);border:1.5px solid var(--card-border);border-radius:14px;cursor:pointer;transition:all .2s;font-family:'Outfit',sans-serif;color:var(--text);width:100%;text-align:left}
+.ah-theme-card:hover{border-color:var(--gold)}
+.ah-theme-card-active{border-color:var(--gold);background:var(--gold-dim)}
+.ah-theme-card-preview{width:64px;height:48px;border-radius:8px;border:1px solid;flex-shrink:0;padding:5px;display:flex;flex-direction:column;gap:4px;overflow:hidden}
+.ah-tcp-bar{border-radius:4px;border:1px solid;padding:3px 4px;display:flex;align-items:center;gap:3px}
+.ah-tcp-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.ah-tcp-line{flex:1;height:3px;border-radius:2px}
+.ah-tcp-card{border-radius:4px;border:1px solid;padding:3px 4px;display:flex;flex-direction:column;gap:2px}
+.ah-tcp-line-short{width:60%}
+.ah-tcp-accent-bar{height:4px;border-radius:2px;width:80%}
+.ah-theme-card-info{flex:1;display:flex;flex-direction:column;gap:2px}
+.ah-theme-card-name{font-size:15px;font-weight:600}
+.ah-theme-card-desc{font-size:12px;color:var(--text2)}
+.ah-theme-card-check{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#000;flex-shrink:0}
+
+/* ── theme bottom sheet ── */
+.ah-sheet-overlay{align-items:flex-end!important;background:rgba(0,0,0,0.6)!important}
+.ah-theme-sheet{background:var(--bg2);border-radius:24px 24px 0 0;padding:12px 20px 40px;width:100%;max-width:480px}
+.ah-sheet-handle{width:40px;height:4px;border-radius:2px;background:var(--text3);margin:0 auto 16px}
+.ah-sheet-title{font-size:18px;font-weight:700;margin:0 0 16px;text-align:center}
+
+.ah-theme-card-name{flex:1;font-weight:500}
 
 /* ─── ONBOARDING ─── */
 .ah-onboard-modal{border-radius:20px;max-width:360px;text-align:center;align-self:center}
