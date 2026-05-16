@@ -497,26 +497,37 @@ function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
 
 // ─────────────────── TAB: HOME ───────────────────
 function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenProfile }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(null);
   const [showTheme, setShowTheme] = useState(false);
+  const [showDayPicker, setShowDayPicker] = useState(false);
   const currentTheme = userData.theme || "dark_gold";
   const changeTheme = (id) => { applyTheme(id); const u={...userData,theme:id}; saveData(u); onUpdateData(u); };
+
   const exercises = userData.exerciseList || [];
-  const categories = [...new Set(exercises.map(e => e.category))];
-  const addEx = (ex) => {
-    const nl = [...exercises, ex]; const ne = { ...userData.exercises }; if(!ne[ex.id]) ne[ex.id]={goal:null,history:[]};
-    const u = { ...userData, exerciseList:nl, exercises:ne }; saveData(u); onUpdateData(u);
-  };
-  const delEx = (id) => {
-    const nl = exercises.filter(e=>e.id!==id); const ne={...userData.exercises}; delete ne[id];
-    const u={...userData,exerciseList:nl,exercises:ne}; saveData(u); onUpdateData(u); setConfirmDelete(null);
-  };
+  const today = getTodayDay();
+
+  // Day override (temporary, resets tomorrow)
+  const todayOverride = userData.todayOverride;
+  const isOverrideActive = todayOverride && todayOverride.date === todayStr();
+  const activeDay = isOverrideActive ? todayOverride.day : today;
+
+  const splits = userData.splits || {};
+  const splitLabels = userData.splitLabels || {};
+  const splitMuscles = userData.splitMuscles || {};
+  const activeDayIds = splits[activeDay] || [];
+  const activeDayExs = activeDayIds.map(id => exercises.find(e => e.id === id)).filter(Boolean);
+  const activeLabel = splitLabels[activeDay] || "";
+  const activeMuscles = splitMuscles[activeDay] || [];
+  const isRestDay = activeDayExs.length === 0;
+
   const totalSets = Object.values(userData.exercises||{}).reduce((s,e)=>s+(e.history?.length||0),0);
   const totalHits = Object.values(userData.exercises||{}).reduce((s,e)=>s+(e.history?.filter(h=>h.hitGoal)?.length||0),0);
 
+  const setDayOverride = (day) => { const u={...userData,todayOverride:{date:todayStr(),day}}; saveData(u); onUpdateData(u); };
+  const clearOverride = () => { const u={...userData,todayOverride:null}; saveData(u); onUpdateData(u); };
+
   return (
     <div className="ah-page ah-fade-in">
+      {/* Header */}
       <div className="ah-dash-header">
         <div>
           <p className="ah-dash-greeting">Welcome back,</p>
@@ -529,79 +540,128 @@ function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenPro
       </div>
       {showTheme && <ThemeSheet current={currentTheme} onChange={changeTheme} onClose={()=>setShowTheme(false)}/>}
 
-      {/* Today's Split */}
-      {(() => {
-        const today = getTodayDay();
-        const splits = userData.splits || {};
-        const splitLabels = userData.splitLabels || {};
-        const splitMuscles = userData.splitMuscles || {};
-        const todayIds = splits[today] || [];
-        const todayExs = todayIds.map(id => exercises.find(e => e.id === id)).filter(Boolean);
-        const todayLabel = splitLabels[today] || "";
-        const todayMuscles = splitMuscles[today] || [];
-        return (
-          <div className="ah-home-today">
-            <div className="ah-home-today-header">
-              <span className="ah-home-today-day">{today}</span>
-              {todayLabel ? <h2 className="ah-home-today-label">{todayLabel}</h2> : <h2 className="ah-home-today-label ah-text-dim">No split set</h2>}
-            </div>
-            {todayMuscles.length > 0 && <div className="ah-muscle-tags">{todayMuscles.map(m=><span key={m} className="ah-muscle-tag">{m}</span>)}</div>}
-            {todayExs.length > 0 ? (
-              <div className="ah-home-today-list">
-                {todayExs.map(ex => {
-                  const g = userData.exercises[ex.id]?.goal;
-                  const last = userData.exercises[ex.id]?.history?.[0];
-                  return (
-                    <div key={ex.id} className="ah-home-today-ex" onClick={()=>onSelectExercise(ex)}>
-                      <div className="ah-home-today-ex-info">
-                        <span className="ah-home-today-ex-name">{ex.name}</span>
-                        <span className="ah-home-today-ex-cat">{ex.category}</span>
-                      </div>
-                      <div className="ah-home-today-ex-right">
-                        {g && <span className="ah-home-today-ex-goal">{g.minReps??g.targetReps}–{g.maxReps??g.targetReps}×{g.weight}kg</span>}
-                        {last?.hitGoal && <span className="ah-mini-fire"><I.Fire/></span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : <p className="ah-home-today-rest">Rest day — no exercises scheduled</p>}
+      {/* Override banner */}
+      {isOverrideActive && (
+        <div className="ah-override-banner">
+          <I.Calendar s={14}/>
+          <span>Using <strong>{splitLabels[todayOverride.day] || todayOverride.day}</strong> split instead of {today}'s</span>
+          <button className="ah-override-clear" onClick={clearOverride}>✕ Reset</button>
+        </div>
+      )}
+
+      {/* Today's workout heading */}
+      <div className="ah-workout-heading">
+        <div>
+          <p className="ah-workout-day-label">{isOverrideActive ? `${today} · swapped from ${todayOverride.day}` : today}</p>
+          <h2 className="ah-workout-title">{activeLabel || (isRestDay ? "Rest Day" : "Today's Workout")}</h2>
+        </div>
+      </div>
+
+      {activeMuscles.length > 0 && (
+        <div className="ah-muscle-tags" style={{marginBottom:14}}>
+          {activeMuscles.map(m=><span key={m} className="ah-muscle-tag">{m}</span>)}
+        </div>
+      )}
+
+      {/* Exercise cards or rest state */}
+      {isRestDay ? (
+        <div className="ah-rest-card">
+          <span className="ah-rest-emoji">😴</span>
+          <p className="ah-rest-title">Rest Day</p>
+          <p className="ah-rest-sub">{activeLabel ? `${activeLabel} — ` : ""}No exercises scheduled</p>
+          <button className="ah-btn-secondary ah-pick-split-btn" onClick={()=>setShowDayPicker(true)}>
+            <I.Dumbbell s={16}/> Train a different split today
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="ah-workout-ex-list">
+            {activeDayExs.map(ex => {
+              const d = userData.exercises[ex.id] || {};
+              const g = d.goal;
+              const last = d.history?.[0];
+              const gMin = g?.minReps ?? g?.targetReps;
+              const gMax = g?.maxReps ?? g?.targetReps;
+              const orm = last ? calc1RM(last.weight, last.reps) : null;
+              const loggedToday = d.history?.find(e => e.date.slice(0,10) === todayStr());
+              return (
+                <div key={ex.id} className="ah-workout-ex-card" onClick={()=>onSelectExercise(ex)}>
+                  <div className="ah-workout-ex-header">
+                    <span className="ah-workout-ex-name">{ex.name}</span>
+                    <span className="ah-workout-ex-cat">{ex.category}</span>
+                  </div>
+                  <div className="ah-workout-ex-meta">
+                    {g ? (
+                      <span className="ah-workout-ex-goal">🎯 {gMin}–{gMax} reps × {g.weight}kg</span>
+                    ) : (
+                      <span className="ah-workout-ex-nogoal">No goal set</span>
+                    )}
+                    {loggedToday ? (
+                      <span className="ah-workout-ex-done">✓ Logged: {loggedToday.weight}kg × {loggedToday.reps} reps</span>
+                    ) : last ? (
+                      <span className="ah-workout-ex-last">Last: {last.weight}kg × {last.reps} reps</span>
+                    ) : (
+                      <span className="ah-workout-ex-nogoal">No sets logged yet</span>
+                    )}
+                  </div>
+                  {orm && <div className="ah-workout-ex-1rm">Est. 1RM {orm}kg</div>}
+                </div>
+              );
+            })}
           </div>
-        );
-      })()}
+          <button className="ah-pick-split-subtle" onClick={()=>setShowDayPicker(true)}>
+            <I.Calendar s={14}/> Use a different day's split
+          </button>
+        </>
+      )}
 
       {/* Stats */}
-      <div className="ah-stats-row">
+      <div className="ah-stats-row" style={{marginTop:24}}>
         <div className="ah-stat-card"><span className="ah-stat-val">{exercises.length}</span><span className="ah-stat-label">Exercises</span></div>
         <div className="ah-stat-card"><span className="ah-stat-val">{totalSets}</span><span className="ah-stat-label">Sets Logged</span></div>
         <div className="ah-stat-card"><span className="ah-stat-val ah-gold">{totalHits}</span><span className="ah-stat-label">Goals Hit</span></div>
       </div>
 
-      {/* All exercises - manage your exercise library */}
-      <div className="ah-section-header"><h2 className="ah-section-title"><I.Dumbbell/> Exercise Library</h2><button className="ah-btn-add" onClick={()=>setShowAdd(true)}><I.Plus/></button></div>
-      <p className="ah-lib-hint">Your master list of exercises. Assign them to days in the Split tab.</p>
-      {exercises.length===0 ? <div className="ah-empty-state"><I.Dumbbell/><p>No exercises yet</p><button className="ah-btn-primary ah-btn-sm" onClick={()=>setShowAdd(true)}>Add Your First Exercise</button></div>
-      : <div className="ah-lib-list">
-          {exercises.map(ex=>{
-            const d=userData.exercises[ex.id]||{}; const g=d.goal; const last=d.history?.[0];
-            // Find which days this exercise is assigned to
-            const assignedDays = DAYS.filter(day => (userData.splits?.[day] || []).includes(ex.id));
-            return <div key={ex.id} className="ah-exercise-card" onClick={()=>onSelectExercise(ex)}>
-              <div className="ah-exercise-info">
-                <span className="ah-exercise-name">{ex.name}</span>
-                <span className="ah-exercise-meta">
-                  <span className="ah-exercise-cat-tag">{ex.category}</span>
-                  {g && <span className="ah-exercise-goal">{g.minReps??g.targetReps}–{g.maxReps??g.targetReps}×{g.weight}kg</span>}
-                  {assignedDays.length > 0 && <span className="ah-exercise-days">{assignedDays.map(d=>d.slice(0,3)).join(", ")}</span>}
-                </span>
-              </div>
-              <div className="ah-exercise-right">{last?.hitGoal&&<span className="ah-mini-fire"><I.Fire/></span>}<button className="ah-icon-btn ah-del-btn" onClick={e=>{e.stopPropagation();setConfirmDelete(ex.id)}}><I.Trash/></button></div>
-            </div>;
-          })}
+      {showDayPicker && <DayPickerSheet userData={userData} exercises={exercises} onPick={setDayOverride} onClose={()=>setShowDayPicker(false)}/>}
+    </div>
+  );
+}
+
+// ─────────────────── DAY PICKER SHEET ───────────────────
+function DayPickerSheet({ userData, exercises, onPick, onClose }) {
+  const splits = userData.splits || {};
+  const splitLabels = userData.splitLabels || {};
+  const splitMuscles = userData.splitMuscles || {};
+  const today = getTodayDay();
+  const daysWithEx = DAYS.filter(day => (splits[day] || []).length > 0);
+  return (
+    <div className="ah-modal-overlay ah-sheet-overlay" onClick={onClose}>
+      <div className="ah-theme-sheet" onClick={e=>e.stopPropagation()}>
+        <div className="ah-sheet-handle"/>
+        <h2 className="ah-sheet-title">Pick a Split for Today</h2>
+        <p className="ah-modal-sub" style={{textAlign:"center",marginTop:-8}}>This only applies today — resets tomorrow</p>
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
+          {daysWithEx.length === 0
+            ? <p className="ah-empty-text">No exercises assigned to any day yet. Set up your split first.</p>
+            : daysWithEx.map(day => {
+              const ids = splits[day] || [];
+              const dayExs = ids.map(id => exercises.find(e => e.id === id)).filter(Boolean);
+              const label = splitLabels[day] || day;
+              const muscles = (splitMuscles[day] || []).slice(0,3);
+              const isToday = day === today;
+              return (
+                <button key={day} className={`ah-day-pick-btn ${isToday?"ah-day-pick-today":""}`} onClick={()=>{onPick(day);onClose();}}>
+                  <div className="ah-day-pick-left">
+                    <span className="ah-day-pick-name">{label}{isToday?" · Today":""}</span>
+                    <span className="ah-day-pick-sub">{day} · {dayExs.length} exercise{dayExs.length!==1?"s":""}</span>
+                  </div>
+                  {muscles.length>0 && <div className="ah-day-pick-muscles">{muscles.map(m=><span key={m} className="ah-muscle-tag-sm">{m}</span>)}</div>}
+                </button>
+              );
+            })
+          }
         </div>
-      }
-      {showAdd && <AddExerciseModal existingIds={exercises.map(e=>e.id)} onAdd={addEx} onClose={()=>setShowAdd(false)}/>}
-      {confirmDelete && <div className="ah-modal-overlay" onClick={()=>setConfirmDelete(null)}><div className="ah-modal ah-modal-confirm" onClick={e=>e.stopPropagation()}><h2 className="ah-modal-title">Delete Exercise?</h2><p className="ah-modal-sub">This will remove all history.</p><div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={()=>setConfirmDelete(null)}>Cancel</button><button className="ah-btn-danger" onClick={()=>delEx(confirmDelete)}>Delete</button></div></div></div>}
+      </div>
     </div>
   );
 }
@@ -1744,4 +1804,49 @@ const styles = `
 .ah-increase-weight-row{display:flex;align-items:center;gap:8px;margin-bottom:14px}
 .ah-increase-input{width:100px!important;text-align:center;font-size:18px!important;font-weight:600!important;padding:10px 12px!important}
 .ah-increase-kg{font-size:14px;color:var(--text2);font-weight:500}
+
+/* ─── HOME TAB — DAY OVERRIDE BANNER ─── */
+.ah-override-banner{display:flex;align-items:center;gap:8px;padding:10px 14px;margin-bottom:14px;background:rgba(200,168,78,0.1);border:1px solid rgba(200,168,78,0.3);border-radius:12px;font-size:13px;color:var(--gold);animation:fadeIn .3s ease-out}
+.ah-override-banner span{flex:1;line-height:1.4}
+.ah-override-clear{margin-left:auto;background:none;border:1px solid rgba(200,168,78,0.4);border-radius:8px;color:var(--gold);font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer;transition:all .2s;flex-shrink:0}
+.ah-override-clear:hover{background:rgba(200,168,78,0.15)}
+
+/* ─── HOME TAB — WORKOUT HEADING ─── */
+.ah-workout-heading{margin-bottom:16px}
+.ah-workout-day-label{font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:1.5px;margin:0 0 4px;font-weight:500}
+.ah-workout-title{font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:var(--text);margin:0}
+
+/* ─── HOME TAB — REST CARD ─── */
+.ah-rest-card{display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 24px;background:var(--card);border:1px solid var(--card-border);border-radius:16px;margin-bottom:20px;gap:8px}
+.ah-rest-emoji{font-size:40px;line-height:1;margin-bottom:4px}
+.ah-rest-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin:0;color:var(--text)}
+.ah-rest-sub{font-size:13px;color:var(--text3);margin:0 0 8px}
+.ah-pick-split-btn{margin-top:4px;display:flex;align-items:center;gap:8px}
+
+/* ─── HOME TAB — EXERCISE CARDS ─── */
+.ah-workout-ex-list{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.ah-workout-ex-card{background:var(--card);border:1px solid var(--card-border);border-radius:14px;padding:16px;cursor:pointer;transition:all .2s;animation:fadeIn .3s ease-out}
+.ah-workout-ex-card:hover{border-color:var(--gold-dim);background:var(--bg3)}
+.ah-workout-ex-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.ah-workout-ex-name{font-size:16px;font-weight:600;color:var(--text)}
+.ah-workout-ex-cat{font-size:10px;color:var(--gold);font-weight:500;text-transform:uppercase;letter-spacing:1px;background:var(--gold-dim);padding:3px 8px;border-radius:6px;white-space:nowrap}
+.ah-workout-ex-meta{display:flex;flex-direction:column;gap:4px}
+.ah-workout-ex-goal{font-size:13px;color:var(--gold);font-weight:500}
+.ah-workout-ex-nogoal{font-size:12px;color:var(--text3)}
+.ah-workout-ex-done{font-size:12px;color:#4caf50;font-weight:500}
+.ah-workout-ex-last{font-size:12px;color:var(--text2)}
+.ah-workout-ex-1rm{margin-top:8px;font-size:11px;color:var(--text3);background:var(--bg3);border-radius:6px;padding:4px 10px;display:inline-block}
+
+/* ─── HOME TAB — SUBTLE PICK SPLIT BUTTON ─── */
+.ah-pick-split-subtle{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:10px;background:transparent;border:1px dashed var(--card-border);border-radius:10px;color:var(--text3);font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;transition:all .2s;margin-bottom:4px}
+.ah-pick-split-subtle:hover{border-color:var(--gold-dim);color:var(--gold)}
+
+/* ─── DAY PICKER SHEET ─── */
+.ah-day-pick-btn{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;background:var(--card);border:1.5px solid var(--card-border);border-radius:12px;color:var(--text);font-family:'Outfit',sans-serif;cursor:pointer;text-align:left;transition:all .2s;box-sizing:border-box}
+.ah-day-pick-btn:hover{border-color:var(--gold-dim);background:var(--bg3)}
+.ah-day-pick-today{border-color:rgba(200,168,78,0.4);background:var(--gold-dim)}
+.ah-day-pick-left{flex:1;display:flex;flex-direction:column;gap:2px}
+.ah-day-pick-name{font-size:15px;font-weight:600;color:var(--text)}
+.ah-day-pick-sub{font-size:11px;color:var(--text3)}
+.ah-day-pick-muscles{display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0}
 `;
