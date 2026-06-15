@@ -33,3 +33,27 @@ export async function saveUserData(userData) {
     // localStorage is the fallback; silent fail is intentional
   }
 }
+
+// ── Shared splits ──────────────────────────────────────────
+export async function shareSplit(splitData) {
+  const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const { error } = await supabase
+    .from("shared_splits")
+    .insert({ code, data: splitData });
+  if (error) throw error;
+  return code;
+}
+
+export async function loadSharedSplit(code) {
+  try {
+    const { data, error } = await supabase
+      .from("shared_splits")
+      .select("data")
+      .eq("code", code.toUpperCase().trim())
+      .single();
+    if (error) return null;
+    return data?.data || null;
+  } catch {
+    return null;
+  }
+}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { loadUserData, saveUserData } from "./supabase";
+import { loadUserData, saveUserData, shareSplit, loadSharedSplit } from "./supabase";
 
 const STORAGE_KEY = "alari_health_data";
 
@@ -107,6 +107,8 @@ const I = {
   Grip: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>,
   User: ({s=22}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
   Palette: ({s=18}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><path d="M12 22C6.5 22 2 17.5 2 12S6.5 2 12 2s10 4.5 10 10c0 2-1 3.5-3 3.5h-2c-1 0-2 1-2 2 0 1.5 1.5 2 1 3.5-.5 1-2 1-4 1z"/></svg>,
+  Share: ({s=18}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
+  Download: ({s=18}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
 };
 
 // ─────────────────── WELCOME ───────────────────
@@ -781,12 +783,17 @@ function PRsTab({ userData, onUpdateData }) {
 const SPLIT_PRESETS = ["Push", "Pull", "Legs", "Upper Body", "Lower Body", "Full Body", "Arms", "Back & Biceps", "Chest & Triceps", "Shoulders", "Rest Day"];
 const MUSCLE_GROUPS = ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs", "Core", "Full Body"];
 
-function SplitTab({ userData, onUpdateData }) {
+function SplitTab({ userData, onUpdateData, importCode = "", onImportDone }) {
   const [editDay, setEditDay] = useState(null);
   const [editLabel, setEditLabel] = useState(null);
   const [reorderDay, setReorderDay] = useState(null);
   const [addExDay, setAddExDay] = useState(null);
   const [showAddModal, setShowAddModal] = useState(null);
+  const [showShare, setShowShare] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+
+  // Auto-open import modal when a code is passed in via URL
+  useEffect(() => { if (importCode) setShowImport(true); }, [importCode]);
   const splits = userData.splits || {};
   const splitLabels = userData.splitLabels || {};
   const splitMuscles = userData.splitMuscles || {};
@@ -835,10 +842,23 @@ function SplitTab({ userData, onUpdateData }) {
   const todayLabel = splitLabels[today] || "";
   const todayMuscles = splitMuscles[today] || [];
 
+  const handleImport = (updatedUserData) => {
+    saveData(updatedUserData); onUpdateData(updatedUserData);
+    if (onImportDone) onImportDone();
+  };
+
   return (
     <div className="ah-page ah-fade-in">
-      <h1 className="ah-page-title"><I.Calendar s={24}/> Workout Split</h1>
-      <p className="ah-page-sub">Name your days, assign muscle groups & exercises</p>
+      <div className="ah-split-top-row">
+        <div>
+          <h1 className="ah-page-title" style={{margin:0}}><I.Calendar s={24}/> Workout Split</h1>
+          <p className="ah-page-sub" style={{margin:"4px 0 0"}}>Name your days, assign muscle groups & exercises</p>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button className="ah-icon-btn ah-split-action-btn" onClick={()=>setShowImport(true)} title="Import a split"><I.Download s={18}/></button>
+          <button className="ah-icon-btn ah-split-action-btn" onClick={()=>setShowShare(true)} title="Share your split"><I.Share s={18}/></button>
+        </div>
+      </div>
 
       {/* Today highlight */}
       <div className="ah-today-card">
@@ -943,6 +963,12 @@ function SplitTab({ userData, onUpdateData }) {
 
       {/* Add New Exercise Modal */}
       {showAddModal && <AddExerciseModal existingIds={exercises.map(e=>e.id)} onAdd={(ex)=>{addNewExerciseToDay(showAddModal, ex);setShowAddModal(null);}} onClose={()=>setShowAddModal(null)}/>}
+
+      {/* Share Split Modal */}
+      {showShare && <ShareSplitModal userData={userData} onClose={()=>setShowShare(false)}/>}
+
+      {/* Import Split Modal */}
+      {showImport && <ImportSplitModal initialCode={importCode} userData={userData} onImport={handleImport} onClose={()=>setShowImport(false)}/>}
     </div>
   );
 }
@@ -962,6 +988,147 @@ function EditDayLabelModal({ day, currentLabel, currentMuscles, onSave, onClose 
       <div className="ah-input-group" style={{marginTop:16}}><label className="ah-label">Muscle Groups</label></div>
       <div className="ah-muscle-select">{MUSCLE_GROUPS.map(m=><button key={m} className={`ah-split-toggle ${muscles.includes(m)?"ah-split-on":""}`} onClick={()=>toggleMuscle(m)}>{m}{muscles.includes(m)&&<I.Check/>}</button>)}</div>
       <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={onClose}>Cancel</button><button className="ah-btn-primary ah-btn-sm" onClick={()=>onSave(day,label,muscles)}>Save</button></div>
+    </div></div>
+  );
+}
+
+// ─────────────────── SHARE SPLIT MODAL ───────────────────
+function ShareSplitModal({ userData, onClose }) {
+  const [status, setStatus] = useState("sharing"); // sharing | done | error
+  const [code, setCode] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const doShare = async () => {
+      const splits = userData.splits || {};
+      const splitLabels = userData.splitLabels || {};
+      const splitMuscles = userData.splitMuscles || {};
+      const exercises = userData.exerciseList || [];
+      // Only share exercises that appear in the split
+      const usedIds = new Set(Object.values(splits).flat());
+      const splitExercises = exercises.filter(e => usedIds.has(e.id));
+      const payload = {
+        splits, splitLabels, splitMuscles,
+        exerciseList: splitExercises,
+        authorName: userData.name,
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        const c = await shareSplit(payload);
+        setCode(c); setStatus("done");
+      } catch { setStatus("error"); }
+    };
+    doShare();
+  }, []);
+
+  const copyText = (text, type) => {
+    navigator.clipboard.writeText(text);
+    setCopied(type); setTimeout(() => setCopied(false), 2000);
+  };
+  const link = code ? `${window.location.origin}?import=${code}` : "";
+
+  return (
+    <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
+      <h2 className="ah-modal-title">Share Your Split</h2>
+      {status==="sharing" && <p className="ah-modal-sub">Generating your share code…</p>}
+      {status==="error" && <p className="ah-modal-sub" style={{color:"var(--danger)"}}>Something went wrong. Check your connection and try again.</p>}
+      {status==="done" && (<>
+        <p className="ah-modal-sub">Anyone with this code can import your workout split</p>
+        <div className="ah-share-code-display"><span className="ah-share-code">{code}</span></div>
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <button className="ah-btn-primary ah-btn-sm" style={{flex:1}} onClick={()=>copyText(code,"code")}>{copied==="code"?"✓ Copied!":"Copy Code"}</button>
+          <button className="ah-btn-secondary" style={{flex:1}} onClick={()=>copyText(link,"link")}>{copied==="link"?"✓ Copied!":"Copy Link"}</button>
+        </div>
+        <p className="ah-share-hint">Share this code with friends — they enter it on the Import Split screen to copy your setup</p>
+      </>)}
+      <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={onClose}>Close</button></div>
+    </div></div>
+  );
+}
+
+// ─────────────────── IMPORT SPLIT MODAL ───────────────────
+function ImportSplitModal({ initialCode = "", userData, onImport, onClose }) {
+  const [code, setCode] = useState(initialCode.toUpperCase());
+  const [status, setStatus] = useState("idle"); // idle | loading | loaded | error
+  const [splitData, setSplitData] = useState(null);
+  const [errMsg, setErrMsg] = useState("");
+
+  useEffect(() => { if (initialCode) fetchSplit(initialCode); }, []);
+
+  const fetchSplit = async (c) => {
+    setStatus("loading"); setErrMsg("");
+    const data = await loadSharedSplit(c);
+    if (data) { setSplitData(data); setStatus("loaded"); }
+    else { setErrMsg("No split found with that code. Double-check and try again."); setStatus("idle"); }
+  };
+
+  const handleImport = () => {
+    if (!splitData) return;
+    const existing = userData.exerciseList || [];
+    const existingIds = new Set(existing.map(e => e.id));
+    const incoming = (splitData.exerciseList || []).filter(e => !existingIds.has(e.id));
+    const exercisesData = { ...userData.exercises };
+    incoming.forEach(e => { if (!exercisesData[e.id]) exercisesData[e.id] = { goal: null, history: [] }; });
+    onImport({
+      ...userData,
+      exerciseList: [...existing, ...incoming],
+      exercises: exercisesData,
+      splits: splitData.splits || {},
+      splitLabels: splitData.splitLabels || {},
+      splitMuscles: splitData.splitMuscles || {},
+    });
+    onClose();
+  };
+
+  const daysWithEx = splitData ? DAYS.filter(d => (splitData.splits?.[d] || []).length > 0) : [];
+
+  return (
+    <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
+      <h2 className="ah-modal-title">Import a Split</h2>
+      <p className="ah-modal-sub">Enter a share code to load someone's workout split</p>
+
+      {status !== "loaded" && (
+        <div className="ah-input-group">
+          <label className="ah-label">Share Code</label>
+          <input className="ah-input ah-code-input" placeholder="e.g. A3K9MX" value={code}
+            onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""))} maxLength={6}/>
+        </div>
+      )}
+      {errMsg && <p style={{color:"var(--danger)",fontSize:13,margin:"-8px 0 12px"}}>{errMsg}</p>}
+
+      {status==="loaded" && splitData && (
+        <div className="ah-import-preview">
+          {splitData.authorName && <p className="ah-import-author">Split by <strong>{splitData.authorName}</strong></p>}
+          {daysWithEx.map(day => {
+            const ids = splitData.splits[day] || [];
+            const exs = ids.map(id=>(splitData.exerciseList||[]).find(e=>e.id===id)).filter(Boolean);
+            const label = splitData.splitLabels?.[day] || "";
+            const muscles = splitData.splitMuscles?.[day] || [];
+            return (
+              <div key={day} className="ah-import-day">
+                <div className="ah-import-day-header">
+                  <span className="ah-import-day-name">{day}</span>
+                  {label && <span className="ah-import-day-label">{label}</span>}
+                </div>
+                {muscles.length>0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",margin:"2px 0 4px"}}>{muscles.map(m=><span key={m} className="ah-muscle-tag-sm">{m}</span>)}</div>}
+                <p className="ah-import-day-exs">{exs.length ? exs.map(e=>e.name).join(", ") : "No exercises"}</p>
+              </div>
+            );
+          })}
+          <p className="ah-import-warn">⚠️ This replaces your current split schedule. Your history and PRs stay.</p>
+        </div>
+      )}
+
+      <div className="ah-modal-actions">
+        <button className="ah-btn-secondary" onClick={status==="loaded"?()=>setSplitData(null)||setStatus("idle"):onClose}>
+          {status==="loaded" ? "Back" : "Cancel"}
+        </button>
+        {status==="loaded"
+          ? <button className="ah-btn-primary ah-btn-sm" onClick={handleImport}>Import Split</button>
+          : <button className="ah-btn-primary ah-btn-sm" disabled={code.length<4||status==="loading"} onClick={()=>fetchSplit(code)}>
+              {status==="loading" ? "Loading…" : "Find Split"}
+            </button>}
+      </div>
     </div></div>
   );
 }
@@ -1329,6 +1496,18 @@ export default function AlariHealth() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const syncTimer = useRef(null);
 
+  // Pick up ?import=CODE from the URL (share link)
+  const [pendingImportCode] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get("import") || "";
+  });
+  const [importDone, setImportDone] = useState(false);
+
+  // When a share link is opened, jump straight to the Split tab
+  useEffect(() => {
+    if (pendingImportCode && isLoggedIn && !importDone) setTab("split");
+  }, [pendingImportCode, isLoggedIn]);
+
   // On mount: restore from localStorage instantly, then refresh from cloud
   useEffect(() => {
     const init = async () => {
@@ -1408,7 +1587,7 @@ export default function AlariHealth() {
           : selectedExercise ? <ExerciseDetail exercise={selectedExercise} userData={userData} onBack={()=>setSelectedExercise(null)} onUpdateData={handleUpdateExerciseData}/>
           : tab==="home" ? <HomeTab userData={userData} onUpdateData={setUserData} onLogout={()=>{setIsLoggedIn(false);setSelectedExercise(null);}} onSelectExercise={setSelectedExercise} onOpenProfile={()=>setShowProfile(true)}/>
           : tab==="prs" ? <PRsTab userData={userData} onUpdateData={setUserData}/>
-          : tab==="split" ? <SplitTab userData={userData} onUpdateData={setUserData}/>
+          : tab==="split" ? <SplitTab userData={userData} onUpdateData={setUserData} importCode={importDone ? "" : pendingImportCode} onImportDone={()=>setImportDone(true)}/>
           : tab==="progress" ? <ProgressTab userData={userData}/>
           : <GrowthTab userData={userData} onUpdateData={setUserData}/>}
         </div>
@@ -1849,4 +2028,26 @@ const styles = `
 .ah-day-pick-name{font-size:15px;font-weight:600;color:var(--text)}
 .ah-day-pick-sub{font-size:11px;color:var(--text3)}
 .ah-day-pick-muscles{display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0}
+
+/* ─── SPLIT TOP ROW ─── */
+.ah-split-top-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px}
+.ah-split-action-btn{width:38px;height:38px;border-radius:10px;border:1px solid var(--card-border)!important;color:var(--text2)!important;display:flex;align-items:center;justify-content:center}
+.ah-split-action-btn:hover{border-color:var(--gold)!important;color:var(--gold)!important}
+
+/* ─── SHARE SPLIT MODAL ─── */
+.ah-share-code-display{display:flex;align-items:center;justify-content:center;background:var(--bg3);border:1px solid var(--card-border);border-radius:14px;padding:20px;margin:16px 0}
+.ah-share-code{font-family:'Outfit',sans-serif;font-size:38px;font-weight:800;letter-spacing:0.25em;color:var(--gold);user-select:all}
+.ah-share-hint{font-size:12px;color:var(--text3);text-align:center;line-height:1.5;margin:0 0 4px}
+
+/* ─── IMPORT SPLIT MODAL ─── */
+.ah-code-input{text-transform:uppercase;letter-spacing:0.2em;font-size:22px!important;font-weight:700!important;text-align:center!important}
+.ah-import-preview{display:flex;flex-direction:column;gap:8px;margin:4px 0 16px;max-height:340px;overflow-y:auto}
+.ah-import-author{font-size:13px;color:var(--text2);margin:0 0 4px;text-align:center}
+.ah-import-author strong{color:var(--gold)}
+.ah-import-day{background:var(--bg3);border:1px solid var(--card-border);border-radius:10px;padding:12px 14px}
+.ah-import-day-header{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.ah-import-day-name{font-size:14px;font-weight:600;color:var(--text)}
+.ah-import-day-label{font-size:11px;color:var(--gold);font-weight:500;background:var(--gold-dim);padding:2px 8px;border-radius:5px}
+.ah-import-day-exs{font-size:12px;color:var(--text3);margin:0;line-height:1.5}
+.ah-import-warn{font-size:12px;color:var(--text2);background:rgba(200,168,78,0.08);border:1px solid rgba(200,168,78,0.2);border-radius:8px;padding:10px 12px;margin:4px 0 0;line-height:1.4}
 `;
