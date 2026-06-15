@@ -189,21 +189,44 @@ function SetGoalModal({ exercise, currentGoal, onSave, onClose }) {
   );
 }
 
-function LogSetModal({ exercise, goal, lastEntry, onLog, onClose }) {
-  const [w, setW] = useState(lastEntry?.weight ?? goal?.weight ?? "");
-  const [r, setR] = useState(lastEntry?.reps ?? "");
+function LogSetModal({ exercise, goal, lastNoStrapsEntry, lastStrapsEntry, onLog, onClose }) {
+  // Default to the same grip as the most recent overall entry
+  const mostRecent = lastStrapsEntry && lastNoStrapsEntry
+    ? (new Date(lastStrapsEntry.date) > new Date(lastNoStrapsEntry.date) ? lastStrapsEntry : lastNoStrapsEntry)
+    : (lastStrapsEntry || lastNoStrapsEntry);
+  const [straps, setStraps] = useState(!!(mostRecent?.straps));
+  const relevantLast = straps ? lastStrapsEntry : lastNoStrapsEntry;
+  const [w, setW] = useState(String(relevantLast?.weight ?? goal?.weight ?? ""));
+  const [r, setR] = useState(String(relevantLast?.reps ?? ""));
+
+  // Re-fill weight/reps when toggling grip
+  const handleStrapsToggle = (val) => {
+    setStraps(val);
+    const rel = val ? lastStrapsEntry : lastNoStrapsEntry;
+    setW(String(rel?.weight ?? goal?.weight ?? ""));
+    setR(String(rel?.reps ?? ""));
+  };
+
   const goalMin = goal?.minReps ?? goal?.targetReps;
   const goalMax = goal?.maxReps ?? goal?.targetReps;
   const rNum = Number(r), wNum = Number(w);
   const inRange = goal && wNum >= goal.weight && rNum >= goalMin && rNum < goalMax;
   const hitTop  = goal && wNum >= goal.weight && rNum >= goalMax;
+
   return (
     <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
       <h2 className="ah-modal-title">Log Set</h2><p className="ah-modal-exercise">{exercise.name}</p>
-      {lastEntry && (
+
+      {/* Grip toggle */}
+      <div className="ah-grip-toggle">
+        <button className={`ah-grip-btn ${!straps?"ah-grip-active":""}`} onClick={()=>handleStrapsToggle(false)}>🤲 No Straps</button>
+        <button className={`ah-grip-btn ${straps?"ah-grip-active":""}`} onClick={()=>handleStrapsToggle(true)}>💪 With Straps</button>
+      </div>
+
+      {relevantLast && (
         <div className="ah-last-entry">
-          <I.History/> Last: <strong>{lastEntry.weight}kg × {lastEntry.reps} reps</strong>
-          <span className="ah-last-date"> · {formatDate(lastEntry.date)}</span>
+          <I.History/> Last ({straps?"straps":"no straps"}): <strong>{relevantLast.weight}kg × {relevantLast.reps} reps</strong>
+          <span className="ah-last-date"> · {formatDate(relevantLast.date)}</span>
         </div>
       )}
       {goal && <div className="ah-goal-badge"><I.Trophy/> Goal: {goalMin}–{goalMax} reps × {goal.weight}kg</div>}
@@ -211,7 +234,7 @@ function LogSetModal({ exercise, goal, lastEntry, onLog, onClose }) {
       <div className="ah-input-group"><label className="ah-label">Reps Completed</label><input className="ah-input" type="number" placeholder="e.g. 8" value={r} onChange={e=>setR(e.target.value)}/></div>
       {w&&r&&inRange&&<div className="ah-range-banner">In your target range — great set!</div>}
       {w&&r&&hitTop&&<div className="ah-hit-banner"><I.Fire/> Top of range hit — ready to move up!</div>}
-      <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={onClose}>Cancel</button><button className="ah-btn-primary ah-btn-sm" onClick={()=>{if(w&&r)onLog(Number(w),Number(r))}}>Log Set</button></div>
+      <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={onClose}>Cancel</button><button className="ah-btn-primary ah-btn-sm" onClick={()=>{if(w&&r)onLog(Number(w),Number(r),straps)}}>Log Set</button></div>
     </div></div>
   );
 }
@@ -262,15 +285,20 @@ function EditSetModal({ entry, onSave, onClose }) {
   const [w, setW] = useState(String(entry.weight));
   const [r, setR] = useState(String(entry.reps));
   const [date, setDate] = useState(entry.date.slice(0,10));
+  const [straps, setStraps] = useState(!!(entry.straps));
   return (
     <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
       <h2 className="ah-modal-title">Edit Set</h2>
+      <div className="ah-grip-toggle" style={{marginBottom:16}}>
+        <button className={`ah-grip-btn ${!straps?"ah-grip-active":""}`} onClick={()=>setStraps(false)}>🤲 No Straps</button>
+        <button className={`ah-grip-btn ${straps?"ah-grip-active":""}`} onClick={()=>setStraps(true)}>💪 With Straps</button>
+      </div>
       <div className="ah-input-group"><label className="ah-label">Weight (kg)</label><input className="ah-input" type="number" value={w} onChange={e=>setW(e.target.value)}/></div>
       <div className="ah-input-group"><label className="ah-label">Reps</label><input className="ah-input" type="number" value={r} onChange={e=>setR(e.target.value)}/></div>
       <div className="ah-input-group"><label className="ah-label">Date</label><input className="ah-input ah-date-input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
       <div className="ah-modal-actions">
         <button className="ah-btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="ah-btn-primary ah-btn-sm" onClick={()=>{if(w&&r&&date)onSave({...entry,weight:Number(w),reps:Number(r),date:new Date(date).toISOString()})}}>Save</button>
+        <button className="ah-btn-primary ah-btn-sm" onClick={()=>{if(w&&r&&date)onSave({...entry,weight:Number(w),reps:Number(r),straps,date:new Date(date).toISOString()})}}>Save</button>
       </div>
     </div></div>
   );
@@ -318,19 +346,26 @@ function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
   const bestSet = history.length ? history.reduce((a,b) => calc1RM(b.weight,b.reps) > calc1RM(a.weight,a.reps) ? b : a, history[0]) : null;
   const estimated1RM = bestSet ? calc1RM(bestSet.weight, bestSet.reps) : null;
 
-  // Today's entry (one-set-per-day)
-  const todayEntry = history.find(e => e.date.slice(0,10) === todayStr());
+  // Today's entries — one per grip type
+  const todayNoStraps  = history.find(e => e.date.slice(0,10) === todayStr() && !e.straps);
+  const todayWithStraps = history.find(e => e.date.slice(0,10) === todayStr() && e.straps);
+  const hasTodayEntry = !!(todayNoStraps || todayWithStraps);
+
+  // Last entries per grip type (for pre-filling LogSetModal)
+  const lastNoStrapsEntry  = history.find(e => !e.straps);
+  const lastStrapsEntry    = history.find(e => e.straps);
 
   useEffect(() => {
     if (pendingIncrease && goal) setCustomWeight(String(goal.weight + (WEIGHT_INCREMENTS[exercise.category] || 2.5)));
   }, [pendingIncrease]);
 
-  const handleLog = (weight, reps) => {
+  const handleLog = (weight, reps, straps) => {
     const hitGoal = goal ? weight >= goal.weight && reps >= goalMax : false;
-    const entry = { date: new Date().toISOString(), weight, reps, goalAtTime: goal ? { ...goal } : null, hitGoal };
-    // Replace today's entry if it exists, otherwise prepend
-    const newHistory = todayEntry
-      ? history.map(e => e.date.slice(0,10) === todayStr() ? entry : e)
+    const entry = { date: new Date().toISOString(), weight, reps, straps: !!straps, goalAtTime: goal ? { ...goal } : null, hitGoal };
+    // Replace today's entry for the same grip type, otherwise prepend
+    const todayMatch = history.find(e => e.date.slice(0,10) === todayStr() && !!e.straps === !!straps);
+    const newHistory = todayMatch
+      ? history.map(e => (e.date.slice(0,10) === todayStr() && !!e.straps === !!straps) ? entry : e)
       : [entry, ...history];
     onUpdateData(exercise.id, { goal, history: newHistory, increaseDismissed: false });
     setShowLog(false);
@@ -423,7 +458,7 @@ function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
       {/* Log Set + Override */}
       <div className="ah-log-row">
         <button className="ah-btn-primary ah-btn-log" style={{flex:1}} onClick={()=>setShowLog(true)}>
-          <I.Plus/> {todayEntry ? "Replace Today's Set" : "Log Set"}
+          <I.Plus/> Log Set
         </button>
         {goal && !pendingIncrease && (
           <button className="ah-btn-override" onClick={()=>{ setOverrideWeight(String(goal.weight+(WEIGHT_INCREMENTS[exercise.category]||2.5))); setShowOverride(true); }}>
@@ -431,7 +466,13 @@ function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
           </button>
         )}
       </div>
-      {todayEntry && <p className="ah-today-logged">Today: {todayEntry.weight}kg × {todayEntry.reps} reps — logging again replaces it</p>}
+      {/* Today's logged sets by grip */}
+      {(todayNoStraps || todayWithStraps) && (
+        <div className="ah-today-grip-summary">
+          {todayNoStraps && <span className="ah-today-grip-chip ah-grip-nostraps">🤲 {todayNoStraps.weight}kg × {todayNoStraps.reps} reps</span>}
+          {todayWithStraps && <span className="ah-today-grip-chip ah-grip-straps">💪 {todayWithStraps.weight}kg × {todayWithStraps.reps} reps</span>}
+        </div>
+      )}
 
       {/* Override modal */}
       {showOverride && (
@@ -474,6 +515,7 @@ function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
                   {sets.slice().reverse().map((s,i) => (
                     <div key={i} className={`ah-weight-set-row ${s.hitGoal?"ah-set-hit":""}`}>
                       <span className="ah-set-date">{formatDate(s.date)}</span>
+                      <span className={`ah-grip-badge ${s.straps?"ah-grip-badge-on":"ah-grip-badge-off"}`}>{s.straps?"💪 Straps":"🤲 No Straps"}</span>
                       <span className="ah-set-reps">{s.reps} reps{s.hitGoal&&" 🔥"}</span>
                       <div className="ah-set-actions">
                         <button className="ah-icon-btn" onClick={()=>setEditingEntry(s)} title="Edit"><I.Edit/></button>
@@ -489,7 +531,7 @@ function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
         }
       </div>
 
-      {showLog && <LogSetModal exercise={exercise} goal={goal} lastEntry={lastEntry} onLog={handleLog} onClose={()=>setShowLog(false)}/>}
+      {showLog && <LogSetModal exercise={exercise} goal={goal} lastNoStrapsEntry={lastNoStrapsEntry} lastStrapsEntry={lastStrapsEntry} onLog={handleLog} onClose={()=>setShowLog(false)}/>}
       {showGoal && <SetGoalModal exercise={exercise} currentGoal={goal} onSave={setGoalFn} onClose={()=>setShowGoal(false)}/>}
       {showRestTimer && <RestTimer onClose={()=>setShowRestTimer(false)}/>}
       {editingEntry && <EditSetModal entry={editingEntry} onSave={(orig,upd)=>handleEditEntry(editingEntry,upd)} onClose={()=>setEditingEntry(null)}/>}
@@ -2028,6 +2070,22 @@ const styles = `
 .ah-day-pick-name{font-size:15px;font-weight:600;color:var(--text)}
 .ah-day-pick-sub{font-size:11px;color:var(--text3)}
 .ah-day-pick-muscles{display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0}
+
+/* ─── GRIP / STRAPS TOGGLE ─── */
+.ah-grip-toggle{display:flex;gap:6px;margin-bottom:16px;background:var(--bg3);border-radius:10px;padding:3px}
+.ah-grip-btn{flex:1;padding:9px 6px;background:transparent;border:none;border-radius:8px;color:var(--text2);font-family:'Outfit',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
+.ah-grip-active{background:var(--card);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,0.3)}
+
+/* Grip badge on history rows */
+.ah-grip-badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;flex-shrink:0}
+.ah-grip-badge-on{background:rgba(200,168,78,0.15);color:var(--gold)}
+.ah-grip-badge-off{background:var(--bg3);color:var(--text3)}
+
+/* Today's grip summary chips */
+.ah-today-grip-summary{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;margin-bottom:4px}
+.ah-today-grip-chip{font-size:12px;font-weight:500;padding:5px 12px;border-radius:8px}
+.ah-grip-nostraps{background:var(--bg3);color:var(--text2);border:1px solid var(--card-border)}
+.ah-grip-straps{background:rgba(200,168,78,0.1);color:var(--gold);border:1px solid rgba(200,168,78,0.25)}
 
 /* ─── SPLIT TOP ROW ─── */
 .ah-split-top-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px}
