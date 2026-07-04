@@ -34,6 +34,50 @@ export async function saveUserData(userData) {
   }
 }
 
+// ── Friends & Leaderboard ─────────────────────────────────
+export async function sendFriendRequest(fromPhone, fromName, toPhone) {
+  try {
+    const { data: existing } = await supabase.from("friends").select("id,status")
+      .or(`and(from_phone.eq.${fromPhone},to_phone.eq.${toPhone}),and(from_phone.eq.${toPhone},to_phone.eq.${fromPhone})`);
+    if (existing?.length) return { alreadyExists: true, status: existing[0].status };
+    const { error } = await supabase.from("friends").insert({ from_phone: fromPhone, from_name: fromName, to_phone: toPhone });
+    if (error) return { error: error.message };
+    return { success: true };
+  } catch (e) { return { error: e.message }; }
+}
+
+export async function getFriends(myPhone) {
+  try {
+    const { data } = await supabase.from("friends").select("*")
+      .or(`from_phone.eq.${myPhone},to_phone.eq.${myPhone}`);
+    return data || [];
+  } catch { return []; }
+}
+
+export async function respondFriendRequest(id, accept) {
+  try {
+    await supabase.from("friends").update({ status: accept ? "accepted" : "rejected" }).eq("id", id);
+  } catch {}
+}
+
+export async function removeFriend(id) {
+  try { await supabase.from("friends").delete().eq("id", id); } catch {}
+}
+
+export async function syncPublicPRs(phone, name, prs) {
+  try {
+    await supabase.from("public_prs").upsert({ phone, name, prs, updated_at: new Date().toISOString() });
+  } catch {}
+}
+
+export async function getFriendPRs(phones) {
+  if (!phones.length) return [];
+  try {
+    const { data } = await supabase.from("public_prs").select("phone,name,prs").in("phone", phones);
+    return data || [];
+  } catch { return []; }
+}
+
 // ── Shared splits ──────────────────────────────────────────
 export async function shareSplit(splitData) {
   const code = Math.random().toString(36).slice(2, 8).toUpperCase();

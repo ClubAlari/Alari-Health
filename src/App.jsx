@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { loadUserData, saveUserData, shareSplit, loadSharedSplit } from "./supabase";
+import { loadUserData, saveUserData, shareSplit, loadSharedSplit, sendFriendRequest, getFriends, respondFriendRequest, removeFriend, syncPublicPRs, getFriendPRs } from "./supabase";
 
 const STORAGE_KEY = "alari_health_data";
 
@@ -85,6 +85,37 @@ function getTodayDay() { return DAYS[new Date().getDay()]; }
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function calc1RM(weight, reps) { if (!weight || !reps) return null; if (reps === 1) return weight; return Math.round(weight * (1 + reps / 30)); }
 function fmtSecs(s) { return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; }
+function genId() { return Math.random().toString(36).slice(2,10); }
+
+// Returns the active split variant data for a given day (backwards-compatible)
+function getDayActive(day, userData) {
+  const variants = userData.dayVariants?.[day];
+  if (variants?.length) {
+    const activeId = userData.activeVariants?.[day] || variants[0].id;
+    return variants.find(v => v.id === activeId) || variants[0];
+  }
+  return {
+    id: null,
+    label: userData.splitLabels?.[day] || "",
+    muscles: userData.splitMuscles?.[day] || [],
+    exercises: userData.splits?.[day] || [],
+  };
+}
+
+// Compute public PR map from userData { exId: { weight, reps, date } }
+function buildPublicPRs(userData) {
+  const result = {};
+  const exercises = userData.exerciseList || [];
+  exercises.forEach(ex => {
+    const hist = userData.exercises[ex.id]?.history || [];
+    const manual = userData.manualPRs?.[ex.id] || [];
+    const all = [...hist, ...manual];
+    if (!all.length) return;
+    const best = all.reduce((a,b) => calc1RM(b.weight,b.reps) > calc1RM(a.weight,a.reps) ? b : a, all[0]);
+    result[ex.id] = { name: ex.name, category: ex.category, weight: best.weight, reps: best.reps, date: best.date };
+  });
+  return result;
+}
 
 // ─────────────────── ICONS ───────────────────
 const I = {
@@ -109,7 +140,46 @@ const I = {
   Palette: ({s=18}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><path d="M12 22C6.5 22 2 17.5 2 12S6.5 2 12 2s10 4.5 10 10c0 2-1 3.5-3 3.5h-2c-1 0-2 1-2 2 0 1.5 1.5 2 1 3.5-.5 1-2 1-4 1z"/></svg>,
   Share: ({s=18}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
   Download: ({s=18}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+  Users: ({s=22}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  Question: ({s=18}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+  Medal: ({s=18}={}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="14" r="6"/><path d="M12 2v4"/><path d="m5 7 2 4"/><path d="m19 7-2 4"/><path d="M12 14v2"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>,
 };
+
+// ─────────────────── HELP MODAL ───────────────────
+const HELP_STEPS = [
+  { icon:"🏋️", title:"Build Your Exercise Library", body:"Go to the Library tab (Exercise icon). Add exercises you do from the presets, or create custom ones. Each exercise tracks its own history and goal." },
+  { icon:"📅", title:"Set Up Your Weekly Split", body:"In the Split tab, assign exercises to each day of the week. Name each day (Push Day, Legs, etc.) and tag the muscle groups. You can add multiple variants per day — like 'Glute Focus A' and 'Glute Focus B' — and swap between them." },
+  { icon:"🎯", title:"Set a Goal for Each Exercise", body:"Open any exercise and tap the edit icon on the Goal card. Set a weight and a rep range (e.g. 8–10 reps × 80kg). The app tracks when you hit the top of your range and suggests moving up." },
+  { icon:"📝", title:"Log Your Best Set", body:"On the exercise detail page, tap Log Set. Select whether you used straps or not — both are tracked separately. The app remembers your last entry for each grip type as a starting point." },
+  { icon:"🔄", title:"Use the Rest Timer", body:"After logging a set, the rest timer opens automatically. Choose how long you need — the app counts down and closes when you're ready to go again." },
+  { icon:"🏠", title:"Home Screen Shortcuts", body:"The Home tab shows only today's exercises. Tap any card to open that exercise directly. Use the calendar icon to swap to a different day's split, or the variant chip to switch between workout variants for today." },
+  { icon:"🏆", title:"Track Your PRs", body:"The PRs tab shows your all-time best for every exercise with an estimated 1RM. You can also log manual PRs from before you started using the app." },
+  { icon:"👥", title:"Compete with Friends", body:"In the Friends tab, add friends by their phone number. Once they accept, you can compare PRs exercise by exercise and see who's lifting more. 🏆 marks the winner." },
+  { icon:"📈", title:"Monitor Progress", body:"The Progress tab shows a chart of your weight over time for any exercise. Growth tab tracks your body weight and lets you log progress photos." },
+  { icon:"🎨", title:"Customise the App", body:"Tap the palette icon on the Home tab to switch between Dark Mode (Black & Gold), Light Mode (White & Gold), and Energy Mode (Black & Neon Green)." },
+];
+
+function HelpModal({ onClose }) {
+  const [step, setStep] = useState(0);
+  const s = HELP_STEPS[step];
+  return (
+    <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal ah-help-modal" onClick={e=>e.stopPropagation()}>
+      <div className="ah-help-progress">
+        {HELP_STEPS.map((_,i) => <div key={i} className={`ah-help-dot ${i===step?"ah-help-dot-active":i<step?"ah-help-dot-done":""}`}/>)}
+      </div>
+      <div className="ah-help-icon">{s.icon}</div>
+      <h2 className="ah-help-title">{s.title}</h2>
+      <p className="ah-help-body">{s.body}</p>
+      <div className="ah-help-nav">
+        <button className="ah-btn-secondary ah-btn-sm" onClick={()=>setStep(p=>Math.max(0,p-1))} disabled={step===0}>← Back</button>
+        <span className="ah-help-count">{step+1} / {HELP_STEPS.length}</span>
+        {step < HELP_STEPS.length-1
+          ? <button className="ah-btn-primary ah-btn-sm" onClick={()=>setStep(p=>p+1)}>Next →</button>
+          : <button className="ah-btn-primary ah-btn-sm" onClick={onClose}>Done ✓</button>}
+      </div>
+    </div></div>
+  );
+}
 
 // ─────────────────── WELCOME ───────────────────
 function WelcomeScreen({ onLogin }) {
@@ -543,6 +613,7 @@ function ExerciseDetail({ exercise, userData, onBack, onUpdateData }) {
 function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenProfile }) {
   const [showTheme, setShowTheme] = useState(false);
   const [showDayPicker, setShowDayPicker] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const currentTheme = userData.theme || "dark_gold";
   const changeTheme = (id) => { applyTheme(id); const u={...userData,theme:id}; saveData(u); onUpdateData(u); };
 
@@ -554,14 +625,20 @@ function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenPro
   const isOverrideActive = todayOverride && todayOverride.date === todayStr();
   const activeDay = isOverrideActive ? todayOverride.day : today;
 
-  const splits = userData.splits || {};
-  const splitLabels = userData.splitLabels || {};
-  const splitMuscles = userData.splitMuscles || {};
-  const activeDayIds = splits[activeDay] || [];
+  // Active split (supports variants)
+  const active = getDayActive(activeDay, userData);
+  const activeDayIds = active.exercises || [];
   const activeDayExs = activeDayIds.map(id => exercises.find(e => e.id === id)).filter(Boolean);
-  const activeLabel = splitLabels[activeDay] || "";
-  const activeMuscles = splitMuscles[activeDay] || [];
+  const activeLabel = active.label || "";
+  const activeMuscles = active.muscles || [];
   const isRestDay = activeDayExs.length === 0;
+
+  // Variant switching
+  const variants = userData.dayVariants?.[activeDay] || [];
+  const setActiveVariant = (variantId) => {
+    const u = { ...userData, activeVariants: { ...(userData.activeVariants||{}), [activeDay]: variantId } };
+    saveData(u); onUpdateData(u);
+  };
 
   const totalSets = Object.values(userData.exercises||{}).reduce((s,e)=>s+(e.history?.length||0),0);
   const totalHits = Object.values(userData.exercises||{}).reduce((s,e)=>s+(e.history?.filter(h=>h.hitGoal)?.length||0),0);
@@ -578,17 +655,19 @@ function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenPro
           <h1 className="ah-dash-name-big">{userData.name}</h1>
         </div>
         <div className="ah-dash-header-btns">
+          <button className="ah-profile-btn" onClick={()=>setShowHelp(true)} title="How to use"><I.Question s={18}/></button>
           <button className="ah-profile-btn" onClick={()=>setShowTheme(true)} title="Change theme"><I.Palette s={18}/></button>
           <button className="ah-profile-btn" onClick={onOpenProfile} title="Profile"><I.User s={20}/></button>
         </div>
       </div>
       {showTheme && <ThemeSheet current={currentTheme} onChange={changeTheme} onClose={()=>setShowTheme(false)}/>}
+      {showHelp && <HelpModal onClose={()=>setShowHelp(false)}/>}
 
       {/* Override banner */}
       {isOverrideActive && (
         <div className="ah-override-banner">
           <I.Calendar s={14}/>
-          <span>Using <strong>{splitLabels[todayOverride.day] || todayOverride.day}</strong> split instead of {today}'s</span>
+          <span>Using <strong>{getDayActive(todayOverride.day, userData).label || todayOverride.day}</strong> split instead of {today}'s</span>
           <button className="ah-override-clear" onClick={clearOverride}>✕ Reset</button>
         </div>
       )}
@@ -600,6 +679,16 @@ function HomeTab({ userData, onUpdateData, onLogout, onSelectExercise, onOpenPro
           <h2 className="ah-workout-title">{activeLabel || (isRestDay ? "Rest Day" : "Today's Workout")}</h2>
         </div>
       </div>
+
+      {/* Variant chips — shown when multiple variants exist for this day */}
+      {variants.length > 1 && (
+        <div className="ah-variant-chips">
+          {variants.map(v => (
+            <button key={v.id} className={`ah-variant-chip ${active.id===v.id?"ah-variant-chip-active":""}`}
+              onClick={()=>setActiveVariant(v.id)}>{v.label || "Variant"}</button>
+          ))}
+        </div>
+      )}
 
       {activeMuscles.length > 0 && (
         <div className="ah-muscle-tags" style={{marginBottom:14}}>
@@ -827,74 +916,148 @@ const MUSCLE_GROUPS = ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs"
 
 function SplitTab({ userData, onUpdateData, importCode = "", onImportDone }) {
   const [editDay, setEditDay] = useState(null);
-  const [editLabel, setEditLabel] = useState(null);
-  const [reorderDay, setReorderDay] = useState(null);
-  const [addExDay, setAddExDay] = useState(null);
-  const [showAddModal, setShowAddModal] = useState(null);
+  const [editVariantId, setEditVariantId] = useState(null); // which variant tab is selected in expanded view
+  const [reorderMode, setReorderMode] = useState(false);
+  const [addExMode, setAddExMode] = useState(false);
+  const [editingVariantLabel, setEditingVariantLabel] = useState(null); // { day, variantId }
   const [showShare, setShowShare] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(null); // day string
 
-  // Auto-open import modal when a code is passed in via URL
   useEffect(() => { if (importCode) setShowImport(true); }, [importCode]);
-  const splits = userData.splits || {};
-  const splitLabels = userData.splitLabels || {};
-  const splitMuscles = userData.splitMuscles || {};
+
   const exercises = userData.exerciseList || [];
   const today = getTodayDay();
 
-  const getOrderedExercises = (day) => {
-    const ids = splits[day] || [];
-    return ids.map(id => exercises.find(e => e.id === id)).filter(Boolean);
+  // ── helpers that work on EITHER old or variant structure ──
+  const getDayVariants = (day) => userData.dayVariants?.[day] || null;
+
+  // Get exercise list for a variant (old struct or new)
+  const getVariantExs = (day, variantId) => {
+    const variants = getDayVariants(day);
+    if (variants) {
+      const v = variants.find(v=>v.id===variantId) || variants[0];
+      return (v?.exercises || []).map(id=>exercises.find(e=>e.id===id)).filter(Boolean);
+    }
+    return (userData.splits?.[day]||[]).map(id=>exercises.find(e=>e.id===id)).filter(Boolean);
   };
 
-  const toggleExercise = (day, exId) => {
-    const cur = splits[day] || [];
+  const getVariantIds = (day, variantId) => {
+    const variants = getDayVariants(day);
+    if (variants) return (variants.find(v=>v.id===variantId)||variants[0])?.exercises || [];
+    return userData.splits?.[day] || [];
+  };
+
+  // Convert old-style day to dayVariants, return updated userData
+  const ensureVariants = (day, ud) => {
+    if (ud.dayVariants?.[day]) return ud; // already has variants
+    const oldIds = ud.splits?.[day] || [];
+    const oldLabel = ud.splitLabels?.[day] || "Split A";
+    const oldMuscles = ud.splitMuscles?.[day] || [];
+    const v = { id: genId(), label: oldLabel, muscles: oldMuscles, exercises: oldIds };
+    return { ...ud, dayVariants: { ...(ud.dayVariants||{}), [day]: [v] }, activeVariants: { ...(ud.activeVariants||{}), [day]: v.id } };
+  };
+
+  // Add a new variant to a day
+  const addVariant = (day) => {
+    let ud = ensureVariants(day, userData);
+    const existing = ud.dayVariants[day];
+    const newV = { id: genId(), label: `Split ${String.fromCharCode(65+existing.length)}`, muscles: [], exercises: [] };
+    const updated = { ...ud, dayVariants: { ...ud.dayVariants, [day]: [...existing, newV] } };
+    saveData(updated); onUpdateData(updated);
+    setEditVariantId(newV.id);
+  };
+
+  const deleteVariant = (day, variantId) => {
+    const variants = (userData.dayVariants?.[day]||[]).filter(v=>v.id!==variantId);
+    if (!variants.length) return; // don't delete the last one
+    const ud = { ...userData, dayVariants: { ...(userData.dayVariants||{}), [day]: variants },
+      activeVariants: { ...(userData.activeVariants||{}), [day]: variants[0].id } };
+    saveData(ud); onUpdateData(ud);
+    setEditVariantId(variants[0].id);
+  };
+
+  const setDayActiveVariant = (day, variantId) => {
+    const ud = { ...userData, activeVariants: { ...(userData.activeVariants||{}), [day]: variantId } };
+    saveData(ud); onUpdateData(ud);
+  };
+
+  // Update exercises in a variant (or old split)
+  const updateVariantExercises = (day, variantId, newIds) => {
+    const variants = getDayVariants(day);
+    if (variants) {
+      const updated = variants.map(v => v.id===variantId ? { ...v, exercises: newIds } : v);
+      const ud = { ...userData, dayVariants: { ...(userData.dayVariants||{}), [day]: updated } };
+      saveData(ud); onUpdateData(ud);
+    } else {
+      const ud = { ...userData, splits: { ...(userData.splits||{}), [day]: newIds } };
+      saveData(ud); onUpdateData(ud);
+    }
+  };
+
+  const toggleExercise = (day, variantId, exId) => {
+    const cur = getVariantIds(day, variantId);
     const upd = cur.includes(exId) ? cur.filter(x=>x!==exId) : [...cur, exId];
-    const u = { ...userData, splits: { ...splits, [day]: upd } }; saveData(u); onUpdateData(u);
+    updateVariantExercises(day, variantId, upd);
   };
 
-  const addNewExerciseToDay = (day, exercise) => {
-    // Add to master list if not there
-    const nl = exercises.find(e => e.id === exercise.id) ? exercises : [...exercises, exercise];
+  const moveExercise = (day, variantId, index, direction) => {
+    const cur = [...getVariantIds(day, variantId)];
+    const ni = index + direction;
+    if (ni < 0 || ni >= cur.length) return;
+    [cur[index], cur[ni]] = [cur[ni], cur[index]];
+    updateVariantExercises(day, variantId, cur);
+  };
+
+  const addNewExerciseToVariant = (day, variantId, exercise) => {
+    const nl = exercises.find(e=>e.id===exercise.id) ? exercises : [...exercises, exercise];
     const ne = { ...userData.exercises };
     if (!ne[exercise.id]) ne[exercise.id] = { goal: null, history: [] };
-    // Add to this day's split
-    const cur = splits[day] || [];
+    const cur = getVariantIds(day, variantId);
     const upd = cur.includes(exercise.id) ? cur : [...cur, exercise.id];
-    const u = { ...userData, exerciseList: nl, exercises: ne, splits: { ...splits, [day]: upd } };
-    saveData(u); onUpdateData(u);
+    const variants = getDayVariants(day);
+    let ud;
+    if (variants) {
+      const updatedVariants = variants.map(v => v.id===variantId ? { ...v, exercises: upd } : v);
+      ud = { ...userData, exerciseList: nl, exercises: ne, dayVariants: { ...(userData.dayVariants||{}), [day]: updatedVariants } };
+    } else {
+      ud = { ...userData, exerciseList: nl, exercises: ne, splits: { ...(userData.splits||{}), [day]: upd } };
+    }
+    saveData(ud); onUpdateData(ud);
   };
 
-  const moveExercise = (day, index, direction) => {
-    const cur = [...(splits[day] || [])];
-    const newIndex = index + direction;
-    if (newIndex < 0 || newIndex >= cur.length) return;
-    const temp = cur[index];
-    cur[index] = cur[newIndex];
-    cur[newIndex] = temp;
-    const u = { ...userData, splits: { ...splits, [day]: cur } }; saveData(u); onUpdateData(u);
+  const saveVariantLabel = (day, variantId, label, muscles) => {
+    const variants = getDayVariants(day);
+    if (variants) {
+      const updated = variants.map(v => v.id===variantId ? { ...v, label, muscles } : v);
+      const ud = { ...userData, dayVariants: { ...(userData.dayVariants||{}), [day]: updated } };
+      saveData(ud); onUpdateData(ud);
+    } else {
+      const ud = { ...userData, splitLabels: { ...(userData.splitLabels||{}), [day]: label }, splitMuscles: { ...(userData.splitMuscles||{}), [day]: muscles } };
+      saveData(ud); onUpdateData(ud);
+    }
+    setEditingVariantLabel(null);
   };
 
-  const saveDayLabel = (day, label, muscles) => {
-    const u = { ...userData, splitLabels: { ...splitLabels, [day]: label }, splitMuscles: { ...splitMuscles, [day]: muscles } };
-    saveData(u); onUpdateData(u); setEditLabel(null);
+  const handleImport = (ud) => { saveData(ud); onUpdateData(ud); if (onImportDone) onImportDone(); };
+
+  const expand = (day) => {
+    if (editDay === day) { setEditDay(null); setReorderMode(false); setAddExMode(false); setEditVariantId(null); return; }
+    const variants = getDayVariants(day);
+    const activeId = variants ? (userData.activeVariants?.[day] || variants[0]?.id) : null;
+    setEditDay(day); setEditVariantId(activeId); setReorderMode(false); setAddExMode(false);
   };
 
-  const todayExs = getOrderedExercises(today);
-  const todayLabel = splitLabels[today] || "";
-  const todayMuscles = splitMuscles[today] || [];
-
-  const handleImport = (updatedUserData) => {
-    saveData(updatedUserData); onUpdateData(updatedUserData);
-    if (onImportDone) onImportDone();
-  };
+  // Today's summary
+  const todayActive = getDayActive(today, userData);
+  const todayExs = (todayActive.exercises||[]).map(id=>exercises.find(e=>e.id===id)).filter(Boolean);
 
   return (
     <div className="ah-page ah-fade-in">
       <div className="ah-split-top-row">
         <div>
           <h1 className="ah-page-title" style={{margin:0}}><I.Calendar s={24}/> Workout Split</h1>
-          <p className="ah-page-sub" style={{margin:"4px 0 0"}}>Name your days, assign muscle groups & exercises</p>
+          <p className="ah-page-sub" style={{margin:"4px 0 0"}}>Assign exercises to days · create multiple variants</p>
         </div>
         <div style={{display:"flex",gap:8}}>
           <button className="ah-icon-btn ah-split-action-btn" onClick={()=>setShowImport(true)} title="Import a split"><I.Download s={18}/></button>
@@ -907,130 +1070,388 @@ function SplitTab({ userData, onUpdateData, importCode = "", onImportDone }) {
         <div className="ah-today-header">
           <div>
             <span className="ah-today-label">Today — {today}</span>
-            {todayLabel && <span className="ah-today-split-name">{todayLabel}</span>}
+            {todayActive.label && <span className="ah-today-split-name">{todayActive.label}</span>}
           </div>
           <span className="ah-today-count">{todayExs.length} exercises</span>
         </div>
-        {todayMuscles.length > 0 && <div className="ah-muscle-tags">{todayMuscles.map(m=><span key={m} className="ah-muscle-tag">{m}</span>)}</div>}
-        {todayExs.length === 0 ? <p className="ah-today-empty">Rest day or no exercises assigned</p>
+        {todayActive.muscles?.length>0 && <div className="ah-muscle-tags">{todayActive.muscles.map(m=><span key={m} className="ah-muscle-tag">{m}</span>)}</div>}
+        {todayExs.length===0 ? <p className="ah-today-empty">Rest day or no exercises assigned</p>
         : <div className="ah-today-list">{todayExs.map(ex=>{const g=userData.exercises[ex.id]?.goal;return <div key={ex.id} className="ah-today-exercise"><span className="ah-today-ex-name">{ex.name}</span>{g&&<span className="ah-today-ex-goal">{g.minReps??g.targetReps}–{g.maxReps??g.targetReps}×{g.weight}kg</span>}</div>})}</div>}
       </div>
 
       <h3 className="ah-section-title" style={{marginTop:20,marginBottom:12}}>Weekly Schedule</h3>
-      {DAYS.map(day=>{
-        const orderedExs = getOrderedExercises(day);
-        const ids = splits[day] || [];
+      {DAYS.map(day => {
         const isToday = day === today;
-        const label = splitLabels[day] || "";
-        const muscles = splitMuscles[day] || [];
-        const isReordering = reorderDay === day;
         const isExpanded = editDay === day;
-        const isEditing = addExDay === day;
-        return <div key={day} className={`ah-split-day ${isToday?"ah-split-today":""}`}>
-          <div className="ah-split-day-header" onClick={()=>{setEditDay(isExpanded?null:day);setReorderDay(null);setAddExDay(null);}}>
-            <div className="ah-split-day-left">
-              <span className="ah-split-day-name">{day}{isToday&&<span className="ah-today-dot"/>}</span>
-              {label && <span className="ah-split-day-label">{label}</span>}
-            </div>
-            <div className="ah-split-day-right">
-              <button className="ah-icon-btn" onClick={e=>{e.stopPropagation();setEditLabel(day)}} style={{padding:4}}><I.Edit/></button>
-              {orderedExs.length > 1 && <button className={`ah-icon-btn ${isReordering?"ah-reorder-active":""}`} onClick={e=>{e.stopPropagation();setReorderDay(isReordering?null:day);setEditDay(day);setAddExDay(null);}} style={{padding:4}} title="Reorder"><I.Grip/></button>}
-              <span className="ah-split-day-count">{orderedExs.length}</span>
-            </div>
-          </div>
-          {muscles.length>0 && !isExpanded && <div className="ah-split-day-muscles">{muscles.map(m=><span key={m} className="ah-muscle-tag-sm">{m}</span>)}</div>}
+        const variants = getDayVariants(day);
+        const viewVariantId = editVariantId;
+        const activeVariant = variants ? (variants.find(v=>v.id===viewVariantId)||variants[0]) : null;
+        const displayLabel = variants ? (activeVariant?.label || "") : (userData.splitLabels?.[day] || "");
+        const displayMuscles = variants ? (activeVariant?.muscles || []) : (userData.splitMuscles?.[day] || []);
+        const displayIds = variants ? (activeVariant?.exercises || []) : (userData.splits?.[day] || []);
+        const displayExs = displayIds.map(id=>exercises.find(e=>e.id===id)).filter(Boolean);
+        const variantCount = variants?.length || 0;
 
-          {/* Collapsed: show exercise tags */}
-          {!isExpanded && !isReordering && orderedExs.length>0 && <div className="ah-split-day-exercises">{orderedExs.map(e=><span key={e.id} className="ah-split-tag">{e.name}</span>)}</div>}
-
-          {/* Expanded: show assigned exercises with details */}
-          {isExpanded && !isReordering && (
-            <div className="ah-split-expanded">
-              {muscles.length>0 && <div className="ah-muscle-tags" style={{padding:'0 16px'}}>{muscles.map(m=><span key={m} className="ah-muscle-tag">{m}</span>)}</div>}
-              {orderedExs.length > 0 ? (
-                <div className="ah-split-ex-list">
-                  {orderedExs.map((ex, idx) => {
-                    const g = userData.exercises[ex.id]?.goal;
-                    return (
-                      <div key={ex.id} className="ah-split-ex-item">
-                        <span className="ah-split-ex-num">{idx+1}</span>
-                        <div className="ah-split-ex-info">
-                          <span className="ah-split-ex-name">{ex.name}</span>
-                          <span className="ah-split-ex-detail">{ex.category}{g ? ` · ${g.minReps??g.targetReps}–${g.maxReps??g.targetReps}×${g.weight}kg` : ""}</span>
-                        </div>
-                        <button className="ah-icon-btn ah-del-btn" onClick={()=>toggleExercise(day,ex.id)} title="Remove"><I.Trash/></button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : <p className="ah-split-no-ex">No exercises assigned</p>}
-              <div className="ah-split-actions">
-                <button className="ah-btn-add-to-day" onClick={()=>setAddExDay(isEditing ? null : day)}>
-                  <I.Plus/> {isEditing ? "Done" : "Add / Remove Exercises"}
-                </button>
+        return (
+          <div key={day} className={`ah-split-day ${isToday?"ah-split-today":""}`}>
+            <div className="ah-split-day-header" onClick={()=>expand(day)}>
+              <div className="ah-split-day-left">
+                <span className="ah-split-day-name">{day}{isToday&&<span className="ah-today-dot"/>}</span>
+                {displayLabel && <span className="ah-split-day-label">{displayLabel}</span>}
+                {variantCount > 1 && <span className="ah-variant-count-badge">{variantCount} variants</span>}
               </div>
-
-              {/* Toggle panel for adding/removing */}
-              {isEditing && (
-                <div className="ah-split-edit">
-                  <p className="ah-split-edit-label">Select exercises for {day}</p>
-                  {exercises.length===0 ? <p className="ah-empty-text">No exercises in your library yet</p>
-                  : exercises.map(e=><button key={e.id} className={`ah-split-toggle ${ids.includes(e.id)?"ah-split-on":""}`} onClick={()=>toggleExercise(day,e.id)}>{e.name}<span className="ah-split-toggle-cat">{e.category}</span>{ids.includes(e.id)&&<I.Check/>}</button>)}
-                  <button className="ah-btn-add-to-day" onClick={()=>setShowAddModal(day)}><I.Plus/> Create New Exercise</button>
-                </div>
-              )}
+              <div className="ah-split-day-right">
+                <span className="ah-split-day-count">{displayExs.length}</span>
+              </div>
             </div>
-          )}
 
-          {/* Reorder mode */}
-          {isReordering && orderedExs.length > 0 && (
-            <div className="ah-reorder-list">
-              {orderedExs.map((ex, idx) => (
-                <div key={ex.id} className="ah-reorder-item">
-                  <span className="ah-reorder-num">{idx + 1}</span>
-                  <span className="ah-reorder-name">{ex.name}</span>
-                  <div className="ah-reorder-btns">
-                    <button className="ah-reorder-btn" disabled={idx===0} onClick={()=>moveExercise(day,idx,-1)}><I.ChevUp/></button>
-                    <button className="ah-reorder-btn" disabled={idx===orderedExs.length-1} onClick={()=>moveExercise(day,idx,1)}><I.ChevDown/></button>
+            {/* Collapsed: muscle tags + exercise pills */}
+            {!isExpanded && displayMuscles.length>0 && <div className="ah-split-day-muscles">{displayMuscles.map(m=><span key={m} className="ah-muscle-tag-sm">{m}</span>)}</div>}
+            {!isExpanded && displayExs.length>0 && <div className="ah-split-day-exercises">{displayExs.map(e=><span key={e.id} className="ah-split-tag">{e.name}</span>)}</div>}
+
+            {/* Expanded */}
+            {isExpanded && (
+              <div className="ah-split-expanded">
+                {/* Variant tabs (shown when multiple variants exist) */}
+                {variants && variants.length > 0 && (
+                  <div className="ah-variant-tabs">
+                    {variants.map(v => (
+                      <button key={v.id} className={`ah-variant-tab ${viewVariantId===v.id?"ah-variant-tab-active":""}`}
+                        onClick={()=>{ setEditVariantId(v.id); setDayActiveVariant(day, v.id); setAddExMode(false); setReorderMode(false); }}>
+                        {v.label || "Variant"}
+                      </button>
+                    ))}
+                    <button className="ah-variant-tab ah-variant-tab-add" onClick={()=>addVariant(day)} title="Add variant">+</button>
                   </div>
+                )}
+
+                {/* Active variant header controls */}
+                <div className="ah-split-variant-controls">
+                  <button className="ah-icon-btn" style={{padding:4}} title="Edit name & muscles"
+                    onClick={()=>setEditingVariantLabel({ day, variantId: activeVariant?.id || null, label: displayLabel, muscles: displayMuscles })}>
+                    <I.Edit/>
+                  </button>
+                  {displayExs.length > 1 && (
+                    <button className={`ah-icon-btn ${reorderMode?"ah-reorder-active":""}`} style={{padding:4}} title="Reorder"
+                      onClick={()=>{ setReorderMode(r=>!r); setAddExMode(false); }}>
+                      <I.Grip/>
+                    </button>
+                  )}
+                  {variants && variants.length > 1 && activeVariant && (
+                    <button className="ah-icon-btn ah-del-btn" style={{padding:4}} title="Delete this variant"
+                      onClick={()=>deleteVariant(day, activeVariant.id)}>
+                      <I.Trash/>
+                    </button>
+                  )}
+                  {!variants && (
+                    <button className="ah-icon-btn" style={{padding:4,fontSize:11,color:"var(--gold)"}} title="Add a second variant"
+                      onClick={()=>addVariant(day)}>
+                      <I.Plus/>
+                    </button>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>;
+
+                {displayMuscles.length>0 && <div className="ah-muscle-tags" style={{padding:'0 16px 8px'}}>{displayMuscles.map(m=><span key={m} className="ah-muscle-tag">{m}</span>)}</div>}
+
+                {/* Exercise list or reorder */}
+                {!reorderMode && (
+                  <>
+                    {displayExs.length > 0 ? (
+                      <div className="ah-split-ex-list">
+                        {displayExs.map((ex, idx) => {
+                          const g = userData.exercises[ex.id]?.goal;
+                          return (
+                            <div key={ex.id} className="ah-split-ex-item">
+                              <span className="ah-split-ex-num">{idx+1}</span>
+                              <div className="ah-split-ex-info">
+                                <span className="ah-split-ex-name">{ex.name}</span>
+                                <span className="ah-split-ex-detail">{ex.category}{g ? ` · ${g.minReps??g.targetReps}–${g.maxReps??g.targetReps}×${g.weight}kg` : ""}</span>
+                              </div>
+                              <button className="ah-icon-btn ah-del-btn" title="Remove"
+                                onClick={()=>toggleExercise(day, activeVariant?.id||null, ex.id)}><I.Trash/></button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : <p className="ah-split-no-ex">No exercises assigned to this variant</p>}
+
+                    <div className="ah-split-actions">
+                      <button className="ah-btn-add-to-day" onClick={()=>setAddExMode(m=>!m)}>
+                        <I.Plus/> {addExMode ? "Done" : "Add / Remove Exercises"}
+                      </button>
+                    </div>
+
+                    {addExMode && (
+                      <div className="ah-split-edit">
+                        <p className="ah-split-edit-label">Select exercises for this variant</p>
+                        {exercises.length===0
+                          ? <p className="ah-empty-text">No exercises in your library yet</p>
+                          : exercises.map(e => {
+                              const inVariant = displayIds.includes(e.id);
+                              return <button key={e.id} className={`ah-split-toggle ${inVariant?"ah-split-on":""}`}
+                                onClick={()=>toggleExercise(day, activeVariant?.id||null, e.id)}>
+                                {e.name}<span className="ah-split-toggle-cat">{e.category}</span>{inVariant&&<I.Check/>}
+                              </button>;
+                            })}
+                        <button className="ah-btn-add-to-day" onClick={()=>setShowAddModal(day)}><I.Plus/> Create New Exercise</button>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Reorder mode */}
+                {reorderMode && displayExs.length > 0 && (
+                  <div className="ah-reorder-list">
+                    {displayExs.map((ex, idx) => (
+                      <div key={ex.id} className="ah-reorder-item">
+                        <span className="ah-reorder-num">{idx+1}</span>
+                        <span className="ah-reorder-name">{ex.name}</span>
+                        <div className="ah-reorder-btns">
+                          <button className="ah-reorder-btn" disabled={idx===0} onClick={()=>moveExercise(day, activeVariant?.id||null, idx, -1)}><I.ChevUp/></button>
+                          <button className="ah-reorder-btn" disabled={idx===displayExs.length-1} onClick={()=>moveExercise(day, activeVariant?.id||null, idx, 1)}><I.ChevDown/></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add first variant button for days without variants */}
+                {!variants && (
+                  <div style={{padding:"4px 16px 12px"}}>
+                    <button className="ah-btn-add-to-day" onClick={()=>addVariant(day)}>
+                      <I.Plus/> Add Second Workout Variant
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
       })}
 
-      {/* Edit Day Label Modal */}
-      {editLabel && <EditDayLabelModal day={editLabel} currentLabel={splitLabels[editLabel]||""} currentMuscles={splitMuscles[editLabel]||[]} onSave={saveDayLabel} onClose={()=>setEditLabel(null)}/>}
+      {/* Edit Variant Label Modal */}
+      {editingVariantLabel && (
+        <VariantLabelModal
+          day={editingVariantLabel.day}
+          currentLabel={editingVariantLabel.label}
+          currentMuscles={editingVariantLabel.muscles}
+          onSave={(label, muscles) => saveVariantLabel(editingVariantLabel.day, editingVariantLabel.variantId, label, muscles)}
+          onClose={() => setEditingVariantLabel(null)}
+        />
+      )}
 
       {/* Add New Exercise Modal */}
-      {showAddModal && <AddExerciseModal existingIds={exercises.map(e=>e.id)} onAdd={(ex)=>{addNewExerciseToDay(showAddModal, ex);setShowAddModal(null);}} onClose={()=>setShowAddModal(null)}/>}
+      {showAddModal && <AddExerciseModal existingIds={exercises.map(e=>e.id)}
+        onAdd={(ex)=>{ addNewExerciseToVariant(showAddModal, editVariantId, ex); setShowAddModal(null); }}
+        onClose={()=>setShowAddModal(null)}/>}
 
-      {/* Share Split Modal */}
       {showShare && <ShareSplitModal userData={userData} onClose={()=>setShowShare(false)}/>}
-
-      {/* Import Split Modal */}
       {showImport && <ImportSplitModal initialCode={importCode} userData={userData} onImport={handleImport} onClose={()=>setShowImport(false)}/>}
     </div>
   );
 }
 
-function EditDayLabelModal({ day, currentLabel, currentMuscles, onSave, onClose }) {
+function VariantLabelModal({ day, currentLabel, currentMuscles, onSave, onClose }) {
   const [label, setLabel] = useState(currentLabel);
   const [muscles, setMuscles] = useState(currentMuscles);
   const toggleMuscle = (m) => setMuscles(prev => prev.includes(m) ? prev.filter(x=>x!==m) : [...prev, m]);
   return (
     <div className="ah-modal-overlay" onClick={onClose}><div className="ah-modal" onClick={e=>e.stopPropagation()}>
       <h2 className="ah-modal-title">{day}</h2>
-      <p className="ah-modal-sub">Set the workout type and muscle groups</p>
-      <div className="ah-input-group"><label className="ah-label">Day Name</label>
-        <input className="ah-input" placeholder="e.g. Push Day" value={label} onChange={e=>setLabel(e.target.value)}/>
+      <p className="ah-modal-sub">Name this workout variant and tag its muscle groups</p>
+      <div className="ah-input-group"><label className="ah-label">Variant Name</label>
+        <input className="ah-input" placeholder="e.g. Glute Focus" value={label} onChange={e=>setLabel(e.target.value)}/>
       </div>
       <div className="ah-preset-quick">{SPLIT_PRESETS.map(p=><button key={p} className={`ah-quick-tag ${label===p?"ah-quick-active":""}`} onClick={()=>setLabel(p)}>{p}</button>)}</div>
       <div className="ah-input-group" style={{marginTop:16}}><label className="ah-label">Muscle Groups</label></div>
       <div className="ah-muscle-select">{MUSCLE_GROUPS.map(m=><button key={m} className={`ah-split-toggle ${muscles.includes(m)?"ah-split-on":""}`} onClick={()=>toggleMuscle(m)}>{m}{muscles.includes(m)&&<I.Check/>}</button>)}</div>
-      <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={onClose}>Cancel</button><button className="ah-btn-primary ah-btn-sm" onClick={()=>onSave(day,label,muscles)}>Save</button></div>
+      <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={onClose}>Cancel</button><button className="ah-btn-primary ah-btn-sm" onClick={()=>onSave(label,muscles)}>Save</button></div>
     </div></div>
+  );
+}
+
+// ─────────────────── TAB: FRIENDS & LEADERBOARD ───────────────────
+function FriendsTab({ userData }) {
+  const [friends, setFriends] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [addPhone, setAddPhone] = useState("");
+  const [addStatus, setAddStatus] = useState(null); // null | "sending" | "sent" | "error" | string
+  const [comparing, setComparing] = useState(null); // friend object
+  const [friendPRs, setFriendPRs] = useState({}); // phone -> { name, prs }
+
+  const myPhone = userData.phone;
+
+  const loadFriends = async () => {
+    setLoading(true);
+    const data = await getFriends(myPhone);
+    setFriends(data);
+    // Load PR data for accepted friends
+    const accepted = data.filter(f => f.status === "accepted");
+    const friendPhones = accepted.map(f => f.from_phone === myPhone ? f.to_phone : f.from_phone);
+    if (friendPhones.length) {
+      const prData = await getFriendPRs(friendPhones);
+      const map = {};
+      prData.forEach(d => { map[d.phone] = d; });
+      setFriendPRs(map);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadFriends(); }, []);
+
+  const sendRequest = async () => {
+    const phone = addPhone.trim().replace(/\s+/g,"");
+    if (!phone || phone === myPhone) return;
+    setAddStatus("sending");
+    const result = await sendFriendRequest(myPhone, userData.name, phone);
+    if (result.alreadyExists) setAddStatus("already_exists");
+    else if (result.error) setAddStatus("error");
+    else { setAddStatus("sent"); setAddPhone(""); loadFriends(); }
+  };
+
+  const respond = async (id, accept) => {
+    await respondFriendRequest(id, accept);
+    loadFriends();
+  };
+
+  const remove = async (id) => {
+    await removeFriend(id);
+    loadFriends();
+  };
+
+  const pending = friends.filter(f => f.status === "pending" && f.to_phone === myPhone);
+  const sentPending = friends.filter(f => f.status === "pending" && f.from_phone === myPhone);
+  const accepted = friends.filter(f => f.status === "accepted");
+
+  const getFriendName = (f) => f.from_phone === myPhone ? (friendPRs[f.to_phone]?.name || f.to_phone) : (f.from_name || friendPRs[f.from_phone]?.name || f.from_phone);
+  const getFriendPhone = (f) => f.from_phone === myPhone ? f.to_phone : f.from_phone;
+
+  // Build my PRs for comparison
+  const myPRs = buildPublicPRs(userData);
+
+  return (
+    <div className="ah-page ah-fade-in">
+      <h1 className="ah-page-title"><I.Users s={24}/> Friends & Leaderboard</h1>
+      <p className="ah-page-sub">Add friends and compare PRs exercise by exercise</p>
+
+      {/* Add Friend */}
+      <div className="ah-card" style={{marginBottom:20}}>
+        <p className="ah-card-label" style={{marginBottom:10}}>Add Friend by Phone Number</p>
+        <div style={{display:"flex",gap:8}}>
+          <input className="ah-input" style={{flex:1}} placeholder="e.g. 0412 345 678" value={addPhone}
+            onChange={e=>{ setAddPhone(e.target.value); setAddStatus(null); }}/>
+          <button className="ah-btn-primary ah-btn-sm" disabled={!addPhone||addStatus==="sending"} onClick={sendRequest}>
+            {addStatus==="sending"?"Sending…":"Send"}
+          </button>
+        </div>
+        {addStatus==="sent" && <p className="ah-friends-status ah-status-ok">✓ Friend request sent!</p>}
+        {addStatus==="already_exists" && <p className="ah-friends-status ah-status-warn">Already connected or request pending</p>}
+        {addStatus==="error" && <p className="ah-friends-status ah-status-err">Something went wrong. Try again.</p>}
+      </div>
+
+      {/* Pending incoming requests */}
+      {pending.length > 0 && (
+        <div style={{marginBottom:20}}>
+          <p className="ah-cat-label">Pending Requests</p>
+          {pending.map(f => (
+            <div key={f.id} className="ah-friend-card">
+              <div className="ah-friend-info">
+                <span className="ah-friend-name">{f.from_name || f.from_phone}</span>
+                <span className="ah-friend-phone">{f.from_phone}</span>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button className="ah-btn-primary ah-btn-sm" onClick={()=>respond(f.id, true)}>Accept</button>
+                <button className="ah-btn-secondary ah-btn-sm" onClick={()=>respond(f.id, false)}>Decline</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Sent pending */}
+      {sentPending.length > 0 && (
+        <div style={{marginBottom:20}}>
+          <p className="ah-cat-label">Requests Sent</p>
+          {sentPending.map(f => (
+            <div key={f.id} className="ah-friend-card">
+              <div className="ah-friend-info">
+                <span className="ah-friend-name">{f.to_phone}</span>
+                <span className="ah-friend-phone">Awaiting acceptance</span>
+              </div>
+              <button className="ah-icon-btn ah-del-btn" onClick={()=>remove(f.id)}><I.Trash/></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Accepted friends */}
+      {loading ? <p className="ah-empty-text">Loading…</p> : accepted.length === 0 && pending.length === 0 && sentPending.length === 0 ? (
+        <div className="ah-empty-state"><I.Users s={32}/><p>No friends yet — send your first request above!</p></div>
+      ) : accepted.length > 0 && (
+        <div>
+          <p className="ah-cat-label">Friends</p>
+          {accepted.map(f => {
+            const phone = getFriendPhone(f);
+            const name = getFriendName(f);
+            const theirPRs = friendPRs[phone]?.prs || {};
+            const shared = Object.keys(myPRs).filter(id => theirPRs[id]);
+            return (
+              <div key={f.id} className="ah-friend-card ah-friend-card-accepted">
+                <div className="ah-friend-info">
+                  <span className="ah-friend-name">{name}</span>
+                  <span className="ah-friend-phone">{shared.length} shared exercises</span>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <button className="ah-btn-primary ah-btn-sm" onClick={()=>setComparing({phone, name, prs: theirPRs})}>Compare</button>
+                  <button className="ah-icon-btn ah-del-btn" onClick={()=>remove(f.id)}><I.Trash/></button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Compare modal */}
+      {comparing && (
+        <div className="ah-modal-overlay" onClick={()=>setComparing(null)}><div className="ah-modal" style={{maxHeight:"85vh"}} onClick={e=>e.stopPropagation()}>
+          <h2 className="ah-modal-title">vs {comparing.name}</h2>
+          <p className="ah-modal-sub">Exercise by exercise PR comparison</p>
+          <div className="ah-compare-header">
+            <span className="ah-compare-me">You</span>
+            <span className="ah-compare-ex"/>
+            <span className="ah-compare-them">{comparing.name}</span>
+          </div>
+          {Object.entries(myPRs).map(([id, mine]) => {
+            const theirs = comparing.prs[id];
+            if (!theirs) return null;
+            const my1rm = calc1RM(mine.weight, mine.reps);
+            const their1rm = calc1RM(theirs.weight, theirs.reps);
+            const iWin = my1rm >= their1rm;
+            return (
+              <div key={id} className="ah-compare-row">
+                <div className={`ah-compare-side ah-compare-left ${iWin?"ah-compare-win":""}`}>
+                  <span className="ah-compare-kg">{mine.weight}<small>kg</small></span>
+                  <span className="ah-compare-orm">~{my1rm}kg 1RM</span>
+                  {iWin && <span className="ah-compare-trophy">🏆</span>}
+                </div>
+                <div className="ah-compare-middle">
+                  <span className="ah-compare-exname">{mine.name}</span>
+                </div>
+                <div className={`ah-compare-side ah-compare-right ${!iWin?"ah-compare-win":""}`}>
+                  {!iWin && <span className="ah-compare-trophy">🏆</span>}
+                  <span className="ah-compare-orm">~{their1rm}kg 1RM</span>
+                  <span className="ah-compare-kg">{theirs.weight}<small>kg</small></span>
+                </div>
+              </div>
+            );
+          })}
+          {!Object.keys(comparing.prs).some(id => myPRs[id]) && (
+            <p className="ah-empty-text">No exercises in common yet — log some sets first!</p>
+          )}
+          <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={()=>setComparing(null)}>Close</button></div>
+        </div></div>
+      )}
+    </div>
   );
 }
 
@@ -1514,7 +1935,7 @@ function TabBar({ active, onChange }) {
     { id:"home", label:"Home", icon:<I.Home s={20}/> },
     { id:"prs", label:"PRs", icon:<I.Trophy s={20}/> },
     { id:"split", label:"Split", icon:<I.Calendar s={20}/> },
-    { id:"progress", label:"Progress", icon:<I.Chart s={20}/> },
+    { id:"friends", label:"Friends", icon:<I.Users s={20}/> },
     { id:"growth", label:"Growth", icon:<I.Camera s={20}/> },
   ];
   return (
@@ -1567,13 +1988,18 @@ export default function AlariHealth() {
     init();
   }, []);
 
-  // Auto-sync any userData change to Supabase (debounced 1.5s)
+  // Auto-sync any userData change to Supabase (debounced 1.5s) + sync public PRs
   useEffect(() => {
     if (!userData) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(async () => {
       setSyncing(true);
       await saveUserData(userData);
+      // Keep public PR table up-to-date so friends can see our bests
+      if (userData.phone) {
+        const prs = buildPublicPRs(userData);
+        await syncPublicPRs(userData.phone, userData.name, prs);
+      }
       setSyncing(false);
     }, 1500);
     return () => clearTimeout(syncTimer.current);
@@ -1630,7 +2056,7 @@ export default function AlariHealth() {
           : tab==="home" ? <HomeTab userData={userData} onUpdateData={setUserData} onLogout={()=>{setIsLoggedIn(false);setSelectedExercise(null);}} onSelectExercise={setSelectedExercise} onOpenProfile={()=>setShowProfile(true)}/>
           : tab==="prs" ? <PRsTab userData={userData} onUpdateData={setUserData}/>
           : tab==="split" ? <SplitTab userData={userData} onUpdateData={setUserData} importCode={importDone ? "" : pendingImportCode} onImportDone={()=>setImportDone(true)}/>
-          : tab==="progress" ? <ProgressTab userData={userData}/>
+          : tab==="friends" ? <FriendsTab userData={userData}/>
           : <GrowthTab userData={userData} onUpdateData={setUserData}/>}
         </div>
         {syncing && <div className="ah-sync-pill">Saving…</div>}
@@ -2070,6 +2496,61 @@ const styles = `
 .ah-day-pick-name{font-size:15px;font-weight:600;color:var(--text)}
 .ah-day-pick-sub{font-size:11px;color:var(--text3)}
 .ah-day-pick-muscles{display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0}
+
+/* ─── VARIANT CHIPS (home screen) ─── */
+.ah-variant-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.ah-variant-chip{padding:6px 14px;background:var(--card);border:1.5px solid var(--card-border);border-radius:20px;color:var(--text2);font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
+.ah-variant-chip:hover{border-color:var(--gold-dim)}
+.ah-variant-chip-active{border-color:var(--gold);background:var(--gold-dim);color:var(--gold)}
+
+/* ─── VARIANT TABS (split tab) ─── */
+.ah-variant-tabs{display:flex;gap:4px;padding:8px 16px 0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ah-variant-tab{flex-shrink:0;padding:7px 14px;background:transparent;border:1.5px solid var(--card-border);border-radius:8px;color:var(--text2);font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
+.ah-variant-tab:hover{border-color:var(--gold-dim);color:var(--text)}
+.ah-variant-tab-active{border-color:var(--gold);background:var(--gold-dim);color:var(--gold)}
+.ah-variant-tab-add{border-style:dashed;font-size:16px;padding:4px 12px;color:var(--text3)}
+.ah-variant-count-badge{font-size:9px;font-weight:600;color:var(--gold);background:var(--gold-dim);padding:2px 6px;border-radius:5px;letter-spacing:.3px}
+.ah-split-variant-controls{display:flex;gap:4px;padding:8px 16px 4px;align-items:center}
+
+/* ─── HELP MODAL ─── */
+.ah-help-modal{text-align:center;border-radius:20px 20px 0 0;padding-top:24px}
+.ah-help-progress{display:flex;gap:4px;justify-content:center;margin-bottom:20px}
+.ah-help-dot{width:6px;height:6px;border-radius:50%;background:var(--card-border);transition:all .3s}
+.ah-help-dot-active{background:var(--gold);width:18px;border-radius:4px}
+.ah-help-dot-done{background:var(--gold-dim)}
+.ah-help-icon{font-size:44px;margin-bottom:12px;line-height:1}
+.ah-help-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin:0 0 10px;color:var(--text)}
+.ah-help-body{font-size:14px;color:var(--text2);line-height:1.6;margin:0 0 24px}
+.ah-help-nav{display:flex;align-items:center;gap:10px;justify-content:center}
+.ah-help-count{font-size:12px;color:var(--text3);min-width:50px;text-align:center}
+
+/* ─── FRIENDS TAB ─── */
+.ah-friend-card{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:12px 16px;margin-bottom:8px}
+.ah-friend-card-accepted{border-color:rgba(200,168,78,0.2)}
+.ah-friend-info{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.ah-friend-name{font-size:15px;font-weight:500;color:var(--text)}
+.ah-friend-phone{font-size:11px;color:var(--text3)}
+.ah-friends-status{font-size:12px;margin:8px 0 0;line-height:1.4}
+.ah-status-ok{color:var(--success)}
+.ah-status-warn{color:var(--gold)}
+.ah-status-err{color:var(--danger)}
+
+/* ─── COMPARE MODAL ─── */
+.ah-compare-header{display:flex;align-items:center;margin-bottom:8px;padding:0 4px}
+.ah-compare-me{flex:1;font-size:12px;font-weight:600;color:var(--gold)}
+.ah-compare-ex{flex:1;text-align:center}
+.ah-compare-them{flex:1;text-align:right;font-size:12px;font-weight:600;color:var(--text2)}
+.ah-compare-row{display:flex;align-items:center;gap:6px;padding:10px 4px;border-bottom:1px solid var(--card-border)}
+.ah-compare-row:last-child{border-bottom:none}
+.ah-compare-side{display:flex;flex-direction:column;align-items:flex-end;flex:1;gap:2px}
+.ah-compare-left{align-items:flex-start}
+.ah-compare-win .ah-compare-kg{color:var(--gold)}
+.ah-compare-kg{font-size:17px;font-weight:700;color:var(--text)}
+.ah-compare-kg small{font-size:11px;font-weight:400;color:var(--text2)}
+.ah-compare-orm{font-size:10px;color:var(--text3)}
+.ah-compare-trophy{font-size:14px;line-height:1}
+.ah-compare-middle{flex:0 0 auto;text-align:center;max-width:120px}
+.ah-compare-exname{font-size:11px;font-weight:500;color:var(--text2);text-align:center;display:block;line-height:1.3}
 
 /* ─── GRIP / STRAPS TOGGLE ─── */
 .ah-grip-toggle{display:flex;gap:6px;margin-bottom:16px;background:var(--bg3);border-radius:10px;padding:3px}
