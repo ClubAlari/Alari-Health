@@ -37,9 +37,13 @@ export async function saveUserData(userData) {
 // ── Friends & Leaderboard ─────────────────────────────────
 export async function sendFriendRequest(fromPhone, fromName, toPhone) {
   try {
-    const { data: existing } = await supabase.from("friends").select("id,status")
-      .or(`and(from_phone.eq.${fromPhone},to_phone.eq.${toPhone}),and(from_phone.eq.${toPhone},to_phone.eq.${fromPhone})`);
-    if (existing?.length) return { alreadyExists: true, status: existing[0].status };
+    // Check both directions for an existing connection using separate .eq() queries
+    const [{ data: a }, { data: b }] = await Promise.all([
+      supabase.from("friends").select("id,status").eq("from_phone", fromPhone).eq("to_phone", toPhone),
+      supabase.from("friends").select("id,status").eq("from_phone", toPhone).eq("to_phone", fromPhone),
+    ]);
+    const existing = [...(a || []), ...(b || [])];
+    if (existing.length) return { alreadyExists: true, status: existing[0].status };
     const { error } = await supabase.from("friends").insert({ from_phone: fromPhone, from_name: fromName, to_phone: toPhone });
     if (error) return { error: error.message };
     return { success: true };
@@ -48,9 +52,12 @@ export async function sendFriendRequest(fromPhone, fromName, toPhone) {
 
 export async function getFriends(myPhone) {
   try {
-    const { data } = await supabase.from("friends").select("*")
-      .or(`from_phone.eq.${myPhone},to_phone.eq.${myPhone}`);
-    return data || [];
+    // Two separate queries — avoids .or() string interpolation issues with phone numbers
+    const [{ data: sent }, { data: received }] = await Promise.all([
+      supabase.from("friends").select("*").eq("from_phone", myPhone),
+      supabase.from("friends").select("*").eq("to_phone", myPhone),
+    ]);
+    return [...(sent || []), ...(received || [])];
   } catch { return []; }
 }
 
