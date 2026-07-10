@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { loadUserData, saveUserData, shareSplit, loadSharedSplit, sendFriendRequest, getFriends, respondFriendRequest, removeFriend, syncPublicPRs, getFriendPRs } from "./supabase";
+import { NutritionTab, nutritionStyles } from "./Nutrition";
 
 const STORAGE_KEY = "alari_health_data";
 
@@ -1935,6 +1936,7 @@ function TabBar({ active, onChange }) {
     { id:"home", label:"Home", icon:<I.Home s={20}/> },
     { id:"prs", label:"PRs", icon:<I.Trophy s={20}/> },
     { id:"split", label:"Split", icon:<I.Calendar s={20}/> },
+    { id:"food", label:"Food", icon:<span style={{fontSize:18}}>🍽️</span> },
     { id:"friends", label:"Friends", icon:<I.Users s={20}/> },
     { id:"growth", label:"Growth", icon:<I.Camera s={20}/> },
   ];
@@ -2056,6 +2058,7 @@ export default function AlariHealth() {
           : tab==="home" ? <HomeTab userData={userData} onUpdateData={setUserData} onLogout={()=>{setIsLoggedIn(false);setSelectedExercise(null);}} onSelectExercise={setSelectedExercise} onOpenProfile={()=>setShowProfile(true)}/>
           : tab==="prs" ? <PRsTab userData={userData} onUpdateData={setUserData}/>
           : tab==="split" ? <SplitTab userData={userData} onUpdateData={setUserData} importCode={importDone ? "" : pendingImportCode} onImportDone={()=>setImportDone(true)}/>
+          : tab==="food" ? <NutritionTab userData={userData} onUpdateData={setUserData}/>
           : tab==="friends" ? <FriendsTab userData={userData}/>
           : <GrowthTab userData={userData} onUpdateData={setUserData}/>}
         </div>
@@ -2389,7 +2392,7 @@ const styles = `
   backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);
   border-top:1px solid rgba(255,255,255,0.08);z-index:50;
 }
-.ah-tabbar-item{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--text3);font-family:'Outfit',sans-serif;font-size:10px;font-weight:500;cursor:pointer;padding:4px 12px;transition:color .2s;letter-spacing:.3px}
+.ah-tabbar-item{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--text3);font-family:'Outfit',sans-serif;font-size:10px;font-weight:500;cursor:pointer;padding:4px 6px;flex:1;transition:color .2s;letter-spacing:.3px}
 .ah-tabbar-active{color:var(--gold)}
 .ah-tabbar-icon{display:flex;align-items:center;justify-content:center;height:24px}
 .ah-tabbar-label{margin-top:1px}
@@ -2589,4 +2592,4 @@ const styles = `
 .ah-import-day-label{font-size:11px;color:var(--gold);font-weight:500;background:var(--gold-dim);padding:2px 8px;border-radius:5px}
 .ah-import-day-exs{font-size:12px;color:var(--text3);margin:0;line-height:1.5}
 .ah-import-warn{font-size:12px;color:var(--text2);background:rgba(200,168,78,0.08);border:1px solid rgba(200,168,78,0.2);border-radius:8px;padding:10px 12px;margin:4px 0 0;line-height:1.4}
-`;
+` + nutritionStyles;
