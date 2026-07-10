@@ -828,7 +828,7 @@ export const nutritionStyles = `
 .nc-date-label { font-size:15px; font-weight:600; color:var(--text); min-width:120px; text-align:center; }
 
 /* ── Summary card ── */
-.nc-summary-card { background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:20px; margin-bottom:14px; }
+.nc-summary-card { background:var(--glass); backdrop-filter:blur(20px) saturate(1.8); -webkit-backdrop-filter:blur(20px) saturate(1.8); border:1px solid var(--glass-border); border-radius:var(--radius); padding:20px; margin-bottom:14px; }
 .nc-summary-ring-wrap { position:relative; width:128px; height:128px; margin:0 auto 16px; }
 .nc-ring-svg { width:100%; height:100%; }
 .nc-ring-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
@@ -850,7 +850,7 @@ export const nutritionStyles = `
 .nc-macro-goal { font-weight:400; color:var(--text3); }
 
 /* ── Water ── */
-.nc-water-card { background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:16px; margin-bottom:14px; }
+.nc-water-card { background:var(--glass); backdrop-filter:blur(20px) saturate(1.8); -webkit-backdrop-filter:blur(20px) saturate(1.8); border:1px solid var(--glass-border); border-radius:var(--radius); padding:16px; margin-bottom:14px; }
 .nc-water-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
 .nc-water-icon { font-size:18px; }
 .nc-water-title { font-size:15px; font-weight:600; color:var(--text); flex:1; }
@@ -867,7 +867,7 @@ export const nutritionStyles = `
 .nc-water-btn:hover { border-color:#60A5FA; color:#60A5FA; }
 
 /* ── Meal cards ── */
-.nc-meal-card { background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); margin-bottom:10px; overflow:hidden; }
+.nc-meal-card { background:var(--glass); backdrop-filter:blur(20px) saturate(1.8); -webkit-backdrop-filter:blur(20px) saturate(1.8); border:1px solid var(--glass-border); border-radius:var(--radius); margin-bottom:10px; overflow:hidden; }
 .nc-meal-header { display:flex; align-items:center; gap:8px; padding:14px 16px; cursor:pointer; user-select:none; }
 .nc-meal-icon { font-size:16px; }
 .nc-meal-name { font-size:15px; font-weight:600; color:var(--text); flex:1; }
@@ -902,8 +902,9 @@ export const nutritionStyles = `
 .nc-scanner-close { position:absolute; bottom:calc(env(safe-area-inset-bottom,20px) + 16px); left:50%; transform:translateX(-50%); padding:14px 32px; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2); border-radius:50px; color:#fff; font-family:'Outfit',sans-serif; font-size:15px; font-weight:500; cursor:pointer; }
 
 /* ── Modals (nutrition) ── */
-.nc-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:900; display:flex; align-items:flex-end; justify-content:center; padding-bottom:0; }
-.nc-modal { background:var(--bg2); border-radius:20px 20px 0 0; padding:20px 20px calc(env(safe-area-inset-bottom,24px) + 20px); width:100%; max-width:480px; max-height:92vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
+.nc-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:900; display:flex; align-items:flex-end; justify-content:center; padding-bottom:0; animation:fadeInOverlay .2s ease; backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }
+.nc-modal { background:var(--glass); backdrop-filter:blur(40px) saturate(2); -webkit-backdrop-filter:blur(40px) saturate(2); border:1px solid var(--glass-border); border-radius:24px 24px 0 0; padding:28px 20px calc(env(safe-area-inset-bottom,24px) + 20px); width:100%; max-width:480px; max-height:92vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px; animation:slideUp .35s cubic-bezier(0.32,0.72,0,1); position:relative; }
+.nc-modal::before { content:''; display:block; width:36px; height:4px; background:rgba(255,255,255,0.22); border-radius:2px; margin:-10px auto 20px; flex-shrink:0; }
 .nc-modal-tall { max-height:92vh; }
 .nc-modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .nc-modal-title { font-size:16px; font-weight:700; color:var(--text); }
@@ -960,10 +961,10 @@ export const nutritionStyles = `
 
 /* ── Shared input/button styles ── */
 .nc-label { font-size:12px; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; display:block; }
-.nc-input { width:100%; background:var(--bg3); border:1px solid var(--card-border); border-radius:10px; color:var(--text); font-family:'Outfit',sans-serif; font-size:15px; font-weight:500; padding:13px 14px; outline:none; box-sizing:border-box; transition:border-color .2s; }
+.nc-input { width:100%; background:var(--glass); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border:1px solid var(--glass-border); border-radius:12px; color:var(--text); font-family:-apple-system,'SF Pro Display','Outfit',sans-serif; font-size:15px; font-weight:500; padding:13px 14px; outline:none; box-sizing:border-box; transition:border-color .2s; }
 .nc-input:focus { border-color:var(--gold); }
-.nc-btn-primary { width:100%; padding:15px; background:var(--gold); border:none; border-radius:12px; color:#0A0A0A; font-family:'Outfit',sans-serif; font-size:15px; font-weight:700; cursor:pointer; margin-top:8px; transition:opacity .2s; }
-.nc-btn-primary:hover { opacity:.9; }
-.nc-btn-sec { width:100%; padding:13px; background:var(--bg3); border:1px solid var(--card-border); border-radius:12px; color:var(--text); font-family:'Outfit',sans-serif; font-size:14px; font-weight:500; cursor:pointer; transition:all .2s; }
-.nc-btn-sec:hover { border-color:var(--gold); color:var(--gold); }
+.nc-btn-primary { width:100%; padding:15px; background:var(--gold); border:none; border-radius:14px; color:#0A0A0A; font-family:-apple-system,'SF Pro Display','Outfit',sans-serif; font-size:15px; font-weight:700; cursor:pointer; margin-top:8px; transition:transform .12s,opacity .12s; -webkit-tap-highlight-color:transparent; }
+.nc-btn-primary:hover { opacity:.9; }.nc-btn-primary:active { transform:scale(0.97); opacity:.85; }
+.nc-btn-sec { width:100%; padding:13px; background:var(--glass); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border:1px solid var(--glass-border); border-radius:14px; color:var(--text); font-family:-apple-system,'SF Pro Display','Outfit',sans-serif; font-size:14px; font-weight:500; cursor:pointer; transition:all .15s; -webkit-tap-highlight-color:transparent; }
+.nc-btn-sec:hover { border-color:var(--gold); color:var(--gold); }.nc-btn-sec:active { transform:scale(0.97); }
 `;
