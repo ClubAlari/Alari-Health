@@ -71,9 +71,9 @@ export async function removeFriend(id) {
   try { await supabase.from("friends").delete().eq("id", id); } catch {}
 }
 
-export async function syncPublicPRs(phone, name, prs) {
+export async function syncPublicPRs(phone, name, prs, isPublic = false) {
   try {
-    await supabase.from("public_prs").upsert({ phone, name, prs, updated_at: new Date().toISOString() });
+    await supabase.from("public_prs").upsert({ phone, name, prs, is_public: isPublic, updated_at: new Date().toISOString() });
   } catch {}
 }
 
@@ -81,6 +81,17 @@ export async function getFriendPRs(phones) {
   if (!phones.length) return [];
   try {
     const { data } = await supabase.from("public_prs").select("phone,name,prs").in("phone", phones);
+    return data || [];
+  } catch { return []; }
+}
+
+export async function getGlobalLeaderboard() {
+  try {
+    const { data } = await supabase
+      .from("public_prs")
+      .select("phone,name,prs")
+      .eq("is_public", true)
+      .limit(500);
     return data || [];
   } catch { return []; }
 }

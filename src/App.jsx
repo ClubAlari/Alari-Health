@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { loadUserData, saveUserData, shareSplit, loadSharedSplit, sendFriendRequest, getFriends, respondFriendRequest, removeFriend, syncPublicPRs, getFriendPRs } from "./supabase";
+import { loadUserData, saveUserData, shareSplit, loadSharedSplit, sendFriendRequest, getFriends, respondFriendRequest, removeFriend, syncPublicPRs, getFriendPRs, getGlobalLeaderboard } from "./supabase";
 import { NutritionTab, nutritionStyles } from "./Nutrition";
 
 const STORAGE_KEY = "alari_health_data";
@@ -915,6 +915,240 @@ function PRsTab({ userData, onUpdateData }) {
 const SPLIT_PRESETS = ["Push", "Pull", "Legs", "Upper Body", "Lower Body", "Full Body", "Arms", "Back & Biceps", "Chest & Triceps", "Shoulders", "Rest Day"];
 const MUSCLE_GROUPS = ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs", "Core", "Full Body"];
 
+const SPLIT_TEMPLATES = {
+  2: {
+    name: "Full Body",
+    badge: "2×/week",
+    desc: "Train your whole body each session with rest days in between. Ideal for beginners or busy schedules.",
+    defaultDays: ["Monday", "Thursday"],
+    workouts: [
+      { label: "Full Body A", muscles: ["Chest", "Back", "Legs", "Shoulders", "Arms"],
+        exercises: ["squat","bench-press","lat-pulldown","shoulder-press","bicep-curl","tricep-pulldown"] },
+      { label: "Full Body B", muscles: ["Legs", "Chest", "Back", "Shoulders", "Arms"],
+        exercises: ["deadlift","incline-bench-press","seated-row","lateral-raise","hammer-curl","leg-press"] },
+    ],
+  },
+  3: {
+    name: "Push / Pull / Legs",
+    badge: "3×/week",
+    desc: "The gold standard. Push days target chest/shoulders/triceps, pull days hit back/biceps, leg days cover everything lower.",
+    defaultDays: ["Monday", "Wednesday", "Friday"],
+    workouts: [
+      { label: "Push", muscles: ["Chest", "Shoulders", "Triceps"],
+        exercises: ["bench-press","incline-bench-press","shoulder-press","lateral-raise","tricep-pulldown","overhead-tricep-ext"] },
+      { label: "Pull", muscles: ["Back", "Biceps"],
+        exercises: ["lat-pulldown","seated-row","pull-up","face-pull","bicep-curl","hammer-curl"] },
+      { label: "Legs", muscles: ["Quads", "Hamstrings", "Glutes", "Calves"],
+        exercises: ["squat","romanian-deadlift","leg-press","leg-curl","leg-extension","calf-raise"] },
+    ],
+  },
+  4: {
+    name: "Upper / Lower",
+    badge: "4×/week",
+    desc: "Hit each muscle group twice per week. Alternate upper and lower body days for maximum recovery and frequency.",
+    defaultDays: ["Monday", "Tuesday", "Thursday", "Friday"],
+    workouts: [
+      { label: "Upper A", muscles: ["Chest", "Back", "Shoulders", "Arms"],
+        exercises: ["bench-press","lat-pulldown","shoulder-press","seated-row","bicep-curl","tricep-pulldown"] },
+      { label: "Lower A", muscles: ["Quads", "Hamstrings", "Glutes", "Calves"],
+        exercises: ["squat","romanian-deadlift","leg-press","leg-curl","calf-raise"] },
+      { label: "Upper B", muscles: ["Chest", "Back", "Shoulders", "Arms"],
+        exercises: ["incline-bench-press","pull-up","lateral-raise","cable-row","hammer-curl","overhead-tricep-ext"] },
+      { label: "Lower B", muscles: ["Quads", "Hamstrings", "Glutes"],
+        exercises: ["deadlift","hack-squat","leg-extension","hip-thrust","calf-raise"] },
+    ],
+  },
+  5: {
+    name: "PPL + Upper / Lower",
+    badge: "5×/week",
+    desc: "Five days of targeted training. The PPL days focus on isolation; Upper and Lower days add frequency on compound lifts.",
+    defaultDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    workouts: [
+      { label: "Push", muscles: ["Chest", "Shoulders", "Triceps"],
+        exercises: ["bench-press","incline-bench-press","shoulder-press","lateral-raise","tricep-pulldown","overhead-tricep-ext"] },
+      { label: "Pull", muscles: ["Back", "Biceps"],
+        exercises: ["lat-pulldown","seated-row","pull-up","face-pull","bicep-curl","hammer-curl"] },
+      { label: "Legs", muscles: ["Quads", "Hamstrings", "Glutes", "Calves"],
+        exercises: ["squat","romanian-deadlift","leg-press","leg-curl","hip-thrust","calf-raise"] },
+      { label: "Upper", muscles: ["Chest", "Back", "Shoulders", "Arms"],
+        exercises: ["dumbbell-press","single-arm-row","lateral-raise","rear-delt-fly","preacher-curl","skull-crusher"] },
+      { label: "Lower", muscles: ["Quads", "Hamstrings", "Glutes"],
+        exercises: ["deadlift","hack-squat","leg-extension","glute-bridge","calf-raise"] },
+    ],
+  },
+  6: {
+    name: "PPL × 2",
+    badge: "6×/week",
+    desc: "Each muscle group twice a week. High-frequency training for advanced lifters looking to maximise volume.",
+    defaultDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    workouts: [
+      { label: "Push A", muscles: ["Chest", "Shoulders", "Triceps"],
+        exercises: ["bench-press","incline-bench-press","shoulder-press","lateral-raise","tricep-pulldown","overhead-tricep-ext"] },
+      { label: "Pull A", muscles: ["Back", "Biceps"],
+        exercises: ["lat-pulldown","seated-row","pull-up","face-pull","bicep-curl","hammer-curl"] },
+      { label: "Legs A", muscles: ["Quads", "Hamstrings", "Glutes", "Calves"],
+        exercises: ["squat","romanian-deadlift","leg-press","leg-curl","hip-thrust","calf-raise"] },
+      { label: "Push B", muscles: ["Chest", "Shoulders", "Triceps"],
+        exercises: ["dumbbell-press","incline-fly","lateral-raise","cable-lateral-raise","skull-crusher","tricep-dip"] },
+      { label: "Pull B", muscles: ["Back", "Biceps"],
+        exercises: ["chin-up","single-arm-row","cable-row","rear-delt-fly","hammer-curl","preacher-curl"] },
+      { label: "Legs B", muscles: ["Quads", "Hamstrings", "Glutes"],
+        exercises: ["deadlift","hack-squat","leg-extension","glute-bridge","bulgarian-split-squat","calf-raise"] },
+    ],
+  },
+};
+
+function SplitMakerModal({ userData, onUpdateData, onClose }) {
+  const [step, setStep] = useState(1); // 1=days, 2=pick days, 3=preview
+  const [daysPerWeek, setDaysPerWeek] = useState(null);
+  const [selectedDays, setSelectedDays] = useState([]);
+
+  const template = daysPerWeek ? SPLIT_TEMPLATES[daysPerWeek] : null;
+
+  const pickDays = (n) => {
+    setDaysPerWeek(n);
+    setSelectedDays(SPLIT_TEMPLATES[n].defaultDays);
+    setStep(2);
+  };
+
+  const toggleDay = (day) => {
+    if (selectedDays.includes(day)) {
+      if (selectedDays.length > 1) setSelectedDays(d => d.filter(x => x !== day));
+    } else {
+      if (selectedDays.length < daysPerWeek) setSelectedDays(d => [...d, day]);
+    }
+  };
+
+  const orderedSelected = DAYS.filter(d => selectedDays.includes(d));
+
+  const applySplit = () => {
+    const allExIds = [...new Set(template.workouts.flatMap(w => w.exercises))];
+    const existingIds = new Set((userData.exerciseList || []).map(e => e.id));
+    const newExItems = allExIds.filter(id => !existingIds.has(id))
+      .map(id => DEFAULT_EXERCISES.find(e => e.id === id)).filter(Boolean);
+
+    const newExList = [...(userData.exerciseList || []), ...newExItems];
+    const newExData = { ...userData.exercises };
+    newExItems.forEach(ex => { if (!newExData[ex.id]) newExData[ex.id] = { goal: null, history: [] }; });
+
+    const newDayVariants = { ...(userData.dayVariants || {}) };
+    const newActiveVariants = { ...(userData.activeVariants || {}) };
+
+    // Clear all days, then assign workouts
+    DAYS.forEach(day => { newDayVariants[day] = []; });
+    orderedSelected.forEach((day, i) => {
+      const workout = template.workouts[i % template.workouts.length];
+      const vid = genId();
+      newDayVariants[day] = [{ id: vid, label: workout.label, muscles: workout.muscles, exercises: workout.exercises }];
+      newActiveVariants[day] = vid;
+    });
+
+    const u = { ...userData, exerciseList: newExList, exercises: newExData, dayVariants: newDayVariants, activeVariants: newActiveVariants };
+    saveData(u); onUpdateData(u); onClose();
+  };
+
+  return (
+    <div className="ah-modal-overlay" onClick={onClose}>
+      <div className="ah-modal ah-maker-modal" onClick={e => e.stopPropagation()}>
+
+        {/* Step 1: choose days per week */}
+        {step === 1 && (<>
+          <h2 className="ah-modal-title">Split Generator</h2>
+          <p className="ah-modal-sub">How many days per week do you want to train?</p>
+          <div className="ah-maker-grid">
+            {[2, 3, 4, 5, 6].map(n => {
+              const t = SPLIT_TEMPLATES[n];
+              return (
+                <button key={n} className="ah-maker-card" onClick={() => pickDays(n)}>
+                  <span className="ah-maker-days">{n}</span>
+                  <span className="ah-maker-card-name">{t.name}</span>
+                  <span className="ah-maker-badge">{t.badge}</span>
+                  <span className="ah-maker-card-desc">{t.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+          <button className="ah-btn-secondary" style={{marginTop:8}} onClick={onClose}>Cancel</button>
+        </>)}
+
+        {/* Step 2: pick which days */}
+        {step === 2 && template && (<>
+          <button className="ah-back-btn" style={{marginBottom:12}} onClick={() => setStep(1)}><I.Back/> Back</button>
+          <h2 className="ah-modal-title">{template.name}</h2>
+          <p className="ah-modal-sub">Select {daysPerWeek} training days ({selectedDays.length}/{daysPerWeek} selected)</p>
+          <div className="ah-maker-days-grid">
+            {DAYS.map(day => {
+              const sel = selectedDays.includes(day);
+              const full = !sel && selectedDays.length >= daysPerWeek;
+              return (
+                <button key={day} className={`ah-maker-day-btn ${sel ? "ah-maker-day-sel" : ""} ${full ? "ah-maker-day-full" : ""}`}
+                  onClick={() => toggleDay(day)} disabled={full}>
+                  {day.slice(0, 3)}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="ah-maker-preview-list">
+            {orderedSelected.map((day, i) => {
+              const w = template.workouts[i % template.workouts.length];
+              return (
+                <div key={day} className="ah-maker-preview-row">
+                  <span className="ah-maker-preview-day">{day.slice(0, 3)}</span>
+                  <span className="ah-maker-preview-label">{w.label}</span>
+                  <span className="ah-maker-preview-muscles">{w.muscles.slice(0, 3).join(" · ")}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <button className="ah-btn-primary" disabled={selectedDays.length !== daysPerWeek}
+            style={{ opacity: selectedDays.length !== daysPerWeek ? 0.4 : 1 }}
+            onClick={() => setStep(3)}>Preview Split →</button>
+        </>)}
+
+        {/* Step 3: preview & apply */}
+        {step === 3 && template && (<>
+          <button className="ah-back-btn" style={{marginBottom:12}} onClick={() => setStep(2)}><I.Back/> Back</button>
+          <h2 className="ah-modal-title">Your Generated Split</h2>
+          <p className="ah-modal-sub">{template.name} · {daysPerWeek} days/week</p>
+
+          <div className="ah-maker-final-list">
+            {orderedSelected.map((day, i) => {
+              const w = template.workouts[i % template.workouts.length];
+              const exNames = w.exercises.map(id => DEFAULT_EXERCISES.find(e => e.id === id)?.name).filter(Boolean);
+              return (
+                <div key={day} className="ah-maker-final-day">
+                  <div className="ah-maker-final-header">
+                    <span className="ah-maker-final-day-name">{day}</span>
+                    <span className="ah-maker-final-label">{w.label}</span>
+                  </div>
+                  <div className="ah-maker-final-muscles">
+                    {w.muscles.map(m => <span key={m} className="ah-muscle-tag-sm">{m}</span>)}
+                  </div>
+                  <div className="ah-maker-final-exs">{exNames.join(" · ")}</div>
+                </div>
+              );
+            })}
+            {DAYS.filter(d => !selectedDays.includes(d)).map(day => (
+              <div key={day} className="ah-maker-final-day ah-maker-rest-day">
+                <div className="ah-maker-final-header">
+                  <span className="ah-maker-final-day-name">{day}</span>
+                  <span className="ah-maker-final-label" style={{color:"var(--text3)"}}>Rest</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="ah-maker-warn">⚠️ This will replace your current split schedule</div>
+          <button className="ah-btn-primary" onClick={applySplit}>Apply This Split ✓</button>
+          <button className="ah-btn-secondary" style={{marginTop:8}} onClick={onClose}>Cancel</button>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 function SplitTab({ userData, onUpdateData, importCode = "", onImportDone }) {
   const [editDay, setEditDay] = useState(null);
   const [editVariantId, setEditVariantId] = useState(null); // which variant tab is selected in expanded view
@@ -924,6 +1158,7 @@ function SplitTab({ userData, onUpdateData, importCode = "", onImportDone }) {
   const [showShare, setShowShare] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showAddModal, setShowAddModal] = useState(null); // day string
+  const [showMaker, setShowMaker] = useState(false);
 
   useEffect(() => { if (importCode) setShowImport(true); }, [importCode]);
 
@@ -1061,6 +1296,7 @@ function SplitTab({ userData, onUpdateData, importCode = "", onImportDone }) {
           <p className="ah-page-sub" style={{margin:"4px 0 0"}}>Assign exercises to days · create multiple variants</p>
         </div>
         <div style={{display:"flex",gap:8}}>
+          <button className="ah-btn-primary ah-btn-sm" style={{padding:"8px 14px",fontSize:13}} onClick={()=>setShowMaker(true)}>✦ Generate</button>
           <button className="ah-icon-btn ah-split-action-btn" onClick={()=>setShowImport(true)} title="Import a split"><I.Download s={18}/></button>
           <button className="ah-icon-btn ah-split-action-btn" onClick={()=>setShowShare(true)} title="Share your split"><I.Share s={18}/></button>
         </div>
@@ -1248,6 +1484,7 @@ function SplitTab({ userData, onUpdateData, importCode = "", onImportDone }) {
 
       {showShare && <ShareSplitModal userData={userData} onClose={()=>setShowShare(false)}/>}
       {showImport && <ImportSplitModal initialCode={importCode} userData={userData} onImport={handleImport} onClose={()=>setShowImport(false)}/>}
+      {showMaker && <SplitMakerModal userData={userData} onUpdateData={onUpdateData} onClose={()=>setShowMaker(false)}/>}
     </div>
   );
 }
@@ -1272,13 +1509,17 @@ function VariantLabelModal({ day, currentLabel, currentMuscles, onSave, onClose 
 }
 
 // ─────────────────── TAB: FRIENDS & LEADERBOARD ───────────────────
-function FriendsTab({ userData }) {
+function FriendsTab({ userData, onUpdateData }) {
   const [friends, setFriends] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addPhone, setAddPhone] = useState("");
   const [addStatus, setAddStatus] = useState(null); // null | "sending" | "sent" | "error" | string
   const [comparing, setComparing] = useState(null); // friend object
   const [friendPRs, setFriendPRs] = useState({}); // phone -> { name, prs }
+  const [leaderTab, setLeaderTab] = useState("friends"); // "friends" | "global"
+  const [globalData, setGlobalData] = useState(null); // null = not loaded
+  const [globalLoading, setGlobalLoading] = useState(false);
+  const [globalEx, setGlobalEx] = useState(""); // selected exercise id
 
   const myPhone = userData.phone;
 
@@ -1299,6 +1540,17 @@ function FriendsTab({ userData }) {
   };
 
   useEffect(() => { loadFriends(); }, []);
+
+  const loadGlobal = async () => {
+    setGlobalLoading(true);
+    const data = await getGlobalLeaderboard();
+    setGlobalData(data);
+    setGlobalLoading(false);
+  };
+
+  useEffect(() => {
+    if (leaderTab === "global" && globalData === null) loadGlobal();
+  }, [leaderTab]);
 
   const sendRequest = async () => {
     const phone = addPhone.trim().replace(/\s+/g,"");
@@ -1333,7 +1585,100 @@ function FriendsTab({ userData }) {
   return (
     <div className="ah-page ah-fade-in">
       <h1 className="ah-page-title"><I.Users s={24}/> Friends & Leaderboard</h1>
-      <p className="ah-page-sub">Add friends and compare PRs exercise by exercise</p>
+
+      {/* Tab toggle */}
+      <div className="ah-leader-tabs">
+        <button className={`ah-leader-tab ${leaderTab==="friends"?"ah-leader-tab-active":""}`} onClick={()=>setLeaderTab("friends")}>Friends</button>
+        <button className={`ah-leader-tab ${leaderTab==="global"?"ah-leader-tab-active":""}`} onClick={()=>setLeaderTab("global")}>🌍 Global</button>
+      </div>
+
+      {/* ─── GLOBAL LEADERBOARD ─── */}
+      {leaderTab === "global" && (() => {
+        if (!userData.publicProfile) {
+          return (
+            <div className="ah-global-optin">
+              <div className="ah-global-optin-icon">🌍</div>
+              <h3 className="ah-global-optin-title">Global Leaderboard</h3>
+              <p className="ah-global-optin-desc">Make your PRs public to appear on the global leaderboard and compete with everyone on Alari Peak.</p>
+              <button className="ah-btn-primary" onClick={() => {
+                const u = { ...userData, publicProfile: true }; saveData(u); if(onUpdateData) onUpdateData(u);
+              }}>Make My Profile Public</button>
+              <p className="ah-global-optin-note">You can turn this off anytime in your Profile.</p>
+            </div>
+          );
+        }
+
+        // Build leaderboard for selected exercise
+        const myPRs = buildPublicPRs(userData);
+        const allExercises = Object.values(myPRs).map(pr => ({ id: Object.keys(myPRs).find(k=>myPRs[k]===pr), ...pr }));
+        // All exercises across all public profiles
+        const allExIds = new Set();
+        (globalData||[]).forEach(p => Object.keys(p.prs||{}).forEach(id => allExIds.add(id)));
+        Object.keys(myPRs).forEach(id => allExIds.add(id));
+        const exOptions = [...allExIds].map(id => {
+          const name = myPRs[id]?.name || (globalData||[]).find(p=>p.prs[id])?.prs[id]?.name || id;
+          return { id, name };
+        }).sort((a,b)=>a.name.localeCompare(b.name));
+
+        const selEx = globalEx || exOptions[0]?.id || "";
+
+        // Build ranked list for selected exercise
+        const rows = [];
+        (globalData||[]).forEach(p => {
+          const pr = p.prs?.[selEx];
+          if (pr) rows.push({ phone: p.phone, name: p.name, weight: pr.weight, reps: pr.reps, orm: calc1RM(pr.weight, pr.reps) });
+        });
+        const myPR = myPRs[selEx];
+        const meAlready = rows.find(r => r.phone === userData.phone);
+        if (!meAlready && myPR) rows.push({ phone: userData.phone, name: userData.name || "You", weight: myPR.weight, reps: myPR.reps, orm: calc1RM(myPR.weight, myPR.reps), isMe: true });
+        rows.sort((a,b) => (b.orm||0) - (a.orm||0));
+        const myRank = rows.findIndex(r => r.phone === userData.phone) + 1;
+
+        return (
+          <div>
+            {!userData.publicProfile && null}
+            <div className="ah-global-banner">
+              <span>✓ Your profile is public</span>
+              <button className="ah-global-private-btn" onClick={() => {
+                const u = { ...userData, publicProfile: false }; saveData(u); if(onUpdateData) onUpdateData(u);
+              }}>Go private</button>
+            </div>
+
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+              <span className="ah-cat-label" style={{margin:0}}>Exercise</span>
+              <button className="ah-btn-secondary ah-btn-sm" onClick={loadGlobal} style={{fontSize:12}}>↺ Refresh</button>
+            </div>
+            <select className="ah-input ah-global-ex-select" value={selEx} onChange={e=>{setGlobalEx(e.target.value);}}>
+              {exOptions.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
+            </select>
+
+            {globalLoading ? <p className="ah-empty-text">Loading…</p>
+            : rows.length === 0 ? <p className="ah-empty-text">No data for this exercise yet — be the first!</p>
+            : (
+              <div className="ah-global-list">
+                {rows.map((r, i) => {
+                  const isMe = r.phone === userData.phone;
+                  const medal = i===0?"🥇":i===1?"🥈":i===2?"🥉":"";
+                  return (
+                    <div key={r.phone} className={`ah-global-row ${isMe?"ah-global-row-me":""}`}>
+                      <span className="ah-global-rank">{medal || `#${i+1}`}</span>
+                      <div className="ah-global-info">
+                        <span className="ah-global-name">{isMe ? `${r.name || "You"} (You)` : r.name}</span>
+                        <span className="ah-global-orm">~{r.orm}kg estimated 1RM</span>
+                      </div>
+                      <span className="ah-global-weight">{r.weight}<small>kg</small></span>
+                    </div>
+                  );
+                })}
+                {myRank > 0 && <p className="ah-global-rank-note">Your rank: #{myRank} of {rows.length}</p>}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ─── FRIENDS ─── */}
+      {leaderTab === "friends" && <>
 
       {/* Add Friend */}
       <div className="ah-card" style={{marginBottom:20}}>
@@ -1452,6 +1797,8 @@ function FriendsTab({ userData }) {
           <div className="ah-modal-actions"><button className="ah-btn-secondary" onClick={()=>setComparing(null)}>Close</button></div>
         </div></div>
       )}
+
+      </>}
     </div>
   );
 }
@@ -1910,6 +2257,19 @@ function ProfilePage({ userData, onUpdateData, onLogout, onBack }) {
         ))}
       </div>
 
+      <h3 className="ah-section-title" style={{marginTop:24,marginBottom:12}}>🌍 Global Leaderboard</h3>
+      <div className="ah-profile-toggle-row">
+        <div>
+          <p className="ah-profile-toggle-label">Public Profile</p>
+          <p className="ah-profile-toggle-desc">Show your PRs on the global leaderboard so anyone can compete with you</p>
+        </div>
+        <button className={`ah-toggle ${userData.publicProfile?"ah-toggle-on":""}`} onClick={()=>{
+          const u = { ...userData, publicProfile: !userData.publicProfile }; saveData(u); onUpdateData(u);
+        }}>
+          <span className="ah-toggle-thumb"/>
+        </button>
+      </div>
+
       <button className="ah-btn-logout" onClick={onLogout}><I.Logout/> Log Out</button>
     </div>
   );
@@ -2000,7 +2360,7 @@ export default function AlariHealth() {
       // Keep public PR table up-to-date so friends can see our bests
       if (userData.phone) {
         const prs = buildPublicPRs(userData);
-        await syncPublicPRs(userData.phone, userData.name, prs);
+        await syncPublicPRs(userData.phone, userData.name, prs, userData.publicProfile || false);
       }
       setSyncing(false);
     }, 1500);
@@ -2059,7 +2419,7 @@ export default function AlariHealth() {
           : tab==="prs" ? <PRsTab userData={userData} onUpdateData={setUserData}/>
           : tab==="split" ? <SplitTab userData={userData} onUpdateData={setUserData} importCode={importDone ? "" : pendingImportCode} onImportDone={()=>setImportDone(true)}/>
           : tab==="food" ? <NutritionTab userData={userData} onUpdateData={setUserData}/>
-          : tab==="friends" ? <FriendsTab userData={userData}/>
+          : tab==="friends" ? <FriendsTab userData={userData} onUpdateData={setUserData}/>
           : <GrowthTab userData={userData} onUpdateData={setUserData}/>}
         </div>
         {syncing && <div className="ah-sync-pill">Saving…</div>}
@@ -2592,4 +2952,68 @@ const styles = `
 .ah-import-day-label{font-size:11px;color:var(--gold);font-weight:500;background:var(--gold-dim);padding:2px 8px;border-radius:5px}
 .ah-import-day-exs{font-size:12px;color:var(--text3);margin:0;line-height:1.5}
 .ah-import-warn{font-size:12px;color:var(--text2);background:rgba(200,168,78,0.08);border:1px solid rgba(200,168,78,0.2);border-radius:8px;padding:10px 12px;margin:4px 0 0;line-height:1.4}
+
+/* ─── SPLIT MAKER MODAL ─── */
+.ah-maker-modal{max-height:90vh;overflow-y:auto}
+.ah-maker-grid{display:flex;flex-direction:column;gap:10px;margin:4px 0 16px}
+.ah-maker-card{background:var(--bg3);border:1.5px solid var(--card-border);border-radius:14px;padding:16px;text-align:left;cursor:pointer;transition:all .2s;display:flex;flex-direction:column;gap:4px}
+.ah-maker-card:hover{border-color:var(--gold);background:var(--gold-dim)}
+.ah-maker-days{font-size:32px;font-weight:800;color:var(--gold);line-height:1}
+.ah-maker-card-name{font-size:16px;font-weight:700;color:var(--text)}
+.ah-maker-badge{font-size:11px;font-weight:600;color:var(--gold);background:var(--gold-dim);border-radius:6px;padding:2px 8px;width:fit-content}
+.ah-maker-card-desc{font-size:12px;color:var(--text3);line-height:1.4;margin-top:2px}
+.ah-maker-days-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin:4px 0 16px}
+.ah-maker-day-btn{padding:10px 0;border-radius:10px;border:1.5px solid var(--card-border);background:var(--bg3);color:var(--text2);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s}
+.ah-maker-day-btn:hover:not(:disabled){border-color:var(--gold);color:var(--gold)}
+.ah-maker-day-sel{background:var(--gold)!important;border-color:var(--gold)!important;color:#0A0A0A!important}
+.ah-maker-day-full{opacity:.3;cursor:not-allowed}
+.ah-maker-preview-list{background:var(--bg3);border-radius:12px;padding:12px;margin:0 0 14px;display:flex;flex-direction:column;gap:8px}
+.ah-maker-preview-row{display:flex;align-items:center;gap:8px}
+.ah-maker-preview-day{font-size:12px;font-weight:700;color:var(--text2);width:32px;flex-shrink:0}
+.ah-maker-preview-label{font-size:13px;font-weight:600;color:var(--text)}
+.ah-maker-preview-muscles{font-size:11px;color:var(--text3);flex:1;text-align:right}
+.ah-maker-final-list{display:flex;flex-direction:column;gap:8px;margin:4px 0 14px;max-height:380px;overflow-y:auto}
+.ah-maker-final-day{background:var(--bg3);border:1px solid var(--card-border);border-radius:12px;padding:12px 14px}
+.ah-maker-rest-day{opacity:.45}
+.ah-maker-final-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.ah-maker-final-day-name{font-size:14px;font-weight:600;color:var(--text)}
+.ah-maker-final-label{font-size:12px;font-weight:600;color:var(--gold);background:var(--gold-dim);padding:2px 8px;border-radius:6px}
+.ah-maker-final-muscles{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.ah-maker-final-exs{font-size:11px;color:var(--text3);line-height:1.4}
+.ah-maker-warn{font-size:12px;color:var(--text2);background:rgba(232,69,69,0.08);border:1px solid rgba(232,69,69,0.2);border-radius:8px;padding:10px 12px;margin:4px 0 8px;text-align:center}
+
+/* ─── LEADER TABS ─── */
+.ah-leader-tabs{display:flex;background:var(--bg3);border-radius:10px;padding:3px;gap:2px;margin-bottom:16px}
+.ah-leader-tab{flex:1;padding:9px 4px;background:transparent;border:none;border-radius:8px;color:var(--text2);font-family:'Outfit',sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:all .2s}
+.ah-leader-tab-active{background:var(--card);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,0.3)}
+
+/* ─── GLOBAL LEADERBOARD ─── */
+.ah-global-optin{display:flex;flex-direction:column;align-items:center;gap:12px;padding:32px 16px;text-align:center}
+.ah-global-optin-icon{font-size:52px}
+.ah-global-optin-title{font-size:20px;font-weight:700;color:var(--text);margin:0}
+.ah-global-optin-desc{font-size:14px;color:var(--text2);line-height:1.5;max-width:280px;margin:0}
+.ah-global-optin-note{font-size:11px;color:var(--text3);margin:0}
+.ah-global-banner{display:flex;align-items:center;justify-content:space-between;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#4ADE80;font-weight:500}
+.ah-global-private-btn{background:transparent;border:1px solid rgba(74,222,128,0.3);border-radius:8px;color:#4ADE80;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;padding:5px 10px;cursor:pointer}
+.ah-global-ex-select{margin-bottom:14px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='%23999'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
+.ah-global-list{display:flex;flex-direction:column;gap:0;background:var(--card);border:1px solid var(--card-border);border-radius:14px;overflow:hidden}
+.ah-global-row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--card-border);transition:background .15s}
+.ah-global-row:last-child{border-bottom:none}
+.ah-global-row-me{background:rgba(200,168,78,0.07);border-left:3px solid var(--gold)}
+.ah-global-rank{font-size:18px;min-width:32px;text-align:center;font-weight:700;color:var(--text3)}
+.ah-global-info{flex:1;display:flex;flex-direction:column;gap:2px}
+.ah-global-name{font-size:14px;font-weight:600;color:var(--text)}
+.ah-global-orm{font-size:11px;color:var(--text3)}
+.ah-global-weight{font-size:20px;font-weight:700;color:var(--text)}
+.ah-global-weight small{font-size:12px;font-weight:400;color:var(--text3)}
+.ah-global-rank-note{text-align:center;font-size:12px;color:var(--text3);margin:10px 0 4px}
+
+/* ─── PROFILE TOGGLE ─── */
+.ah-profile-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--card);border:1px solid var(--card-border);border-radius:14px;padding:16px;margin-bottom:12px}
+.ah-profile-toggle-label{font-size:14px;font-weight:600;color:var(--text);margin:0 0 3px}
+.ah-profile-toggle-desc{font-size:12px;color:var(--text3);margin:0;line-height:1.4}
+.ah-toggle{width:48px;height:28px;border-radius:14px;border:none;background:var(--bg3);position:relative;cursor:pointer;transition:background .25s;flex-shrink:0;box-shadow:inset 0 0 0 1px var(--card-border)}
+.ah-toggle-on{background:var(--gold);box-shadow:none}
+.ah-toggle-thumb{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .25s;display:block;box-shadow:0 1px 4px rgba(0,0,0,0.3)}
+.ah-toggle-on .ah-toggle-thumb{transform:translateX(20px)}
 ` + nutritionStyles;
