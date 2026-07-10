@@ -1,0 +1,13 @@
+{
+  "appId": "com.alaripeak.app",
+  "appName": "Alari Peak",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "allowsLinkPreview": false,
+    "scrollEnabled": true
+  }
+}
